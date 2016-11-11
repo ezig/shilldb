@@ -51,13 +51,6 @@
   (let ([tname (table-name (view-table v))])
     (query-exec (view-connection v) (string-append "delete from " tname (build-where-clause (view-where-q v))))))
 
-(define (set-query-to-fun q)
-  (let* ([qs (map string-trim (string-split q ","))]
-         [qs (map (λ (c) (map string-trim (string-split c))) qs)]
-         [q-funs (map (λ (q) (λ (r) (hash-set r (list-ref q 0) (string->number (list-ref q 2))))) qs)]
-         [q-fun (apply compose (reverse q-funs))])
-    q-fun))
-
 (define (zip l1 l2) (map cons l1 l2))
 
 (define/contract (update v set-query [where-cond ""])
@@ -67,9 +60,8 @@
   (let* ([rows (fetch v)]
          [table-colnames (map column-name (table-columns (view-table v)))]
          [row-hts (map make-immutable-hash (map (λ (r) (zip table-colnames (vector->list r))) rows))]
-         [update-fun (set-query-to-fun set-query)]
          [rows-to-update (filter (parse-where where-cond) row-hts)]
-         [new-rows (map update-fun rows-to-update)])
+         [new-rows (apply-update set-query rows-to-update)])
     (if (andmap (parse-where (view-where-q v)) new-rows)
         (let* ([update-q (string-append "update " (table-name (view-table v)))]
                [set-q (string-append " set " set-query)]
