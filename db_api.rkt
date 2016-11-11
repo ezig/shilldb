@@ -1,6 +1,7 @@
 #lang racket
 
 (require db)
+(require "sql_parse.rkt")
 
 (struct column (cid name type notnull default primary-key) #:transparent)
 (struct table (name columns) #:transparent)
@@ -20,21 +21,6 @@
   (-> view? (listof string?) view?)
   (struct-copy view v [colnames cols]))
 
-(define comp-to-fun (hash "=" =
-                        "<" <
-                        "<=" <=
-                        ">" >
-                        ">=" >=
-                        "!=" (λ (v1 v2) (not (= v1 v2)))))
-
-(define (cond-to-fun cond)
-  (if (non-empty-string? cond)
-      (let* ([conds (map string-trim (string-split cond "and"))]
-             [conds (map (λ (c) (map string-trim (string-split c))) conds)]
-             [cond-funs (map (λ (c) (λ (r) ((hash-ref comp-to-fun (list-ref c 1)) (hash-ref r (list-ref c 0)) (string->number (list-ref c 2))))) conds)])
-        (λ (r) (andmap (λ (c) (c r)) cond-funs)))
-      (λ (r) #t)))
-
 (define (append-to-where where-q cond)
   (if (null? where-q)
                    cond
@@ -45,11 +31,8 @@
 (define/contract (where v cond)
   (-> view? string? view?)
   (let* ([old-q (view-where-q v)]
-        [old-fun (view-where-fun v)]
-        [new-q (append-to-where old-q cond)]
-        [cond-fun (cond-to-fun cond)]
-        [new-fun (λ (r) (and (cond-fun r) (old-fun r)))])
-  (struct-copy view v [where-q new-q] [where-fun new-fun])))
+        [new-q (append-to-where old-q cond)])
+  (struct-copy view v [where-q new-q])))
 
 (define (build-where-clause q)
   (if (or (not (non-empty-string? q)) (null? q))
@@ -85,9 +68,9 @@
          [table-colnames (map column-name (table-columns (view-table v)))]
          [row-hts (map make-immutable-hash (map (λ (r) (zip table-colnames (vector->list r))) rows))]
          [update-fun (set-query-to-fun set-query)]
-         [rows-to-update (filter (cond-to-fun where-cond) row-hts)]
+         [rows-to-update (filter (parse-where where-cond) row-hts)]
          [new-rows (map update-fun rows-to-update)])
-    (if (andmap (view-where-fun v) new-rows)
+    (if (andmap (parse-where (view-where-q v)) new-rows)
         (let* ([update-q (string-append "update " (table-name (view-table v)))]
                [set-q (string-append " set " set-query)]
                [where-q (build-where-clause (append-to-where (view-where-q v) where-cond))]
