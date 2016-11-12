@@ -15,11 +15,14 @@
          [t (table tablename (map (λ (col) (apply column (vector->list col)))
                                   tableinfo))]
          [column-names (map (λ (col) (column-name col)) (table-columns t))])
-    (view connection t column-names (λ (r) #t) null #t #t #t)))
+    (view connection t column-names (λ (r) #t) null column-names #t #t)))
 
 (define/contract (select v cols)
-  (-> view? (listof string?) view?)
-  (struct-copy view v [colnames cols]))
+  (-> view? string? view?)
+  (let ([cols (map string-trim (string-split cols))])
+    (struct-copy view v
+                 [colnames cols]
+                 [updatable (set-intersect (view-colnames v) cols)])))
 
 (define (append-to-where where-q cond)
   (if (null? where-q)
@@ -54,14 +57,14 @@
 (define (zip l1 l2) (map cons l1 l2))
 
 (define/contract (update v set-query [where-cond ""])
-  (->* ((λ (v) (and (view? v) (view-updatable v))) string?)
+  (->* ((λ (v) (and (view? v) (not (null? (view-updatable v))))) string?)
        (string?)
        any/c)
-  (let* ([rows (fetch v)]
+  (let* ([rows (fetch (struct-copy view v [colnames (list "*")]))]
          [table-colnames (map column-name (table-columns (view-table v)))]
          [row-hts (map make-immutable-hash (map (λ (r) (zip table-colnames (vector->list r))) rows))]
          [rows-to-update (filter (parse-where where-cond) row-hts)]
-         [new-rows (apply-update set-query rows-to-update)])
+         [new-rows (apply-update set-query rows-to-update (view-updatable v))])
     (if (andmap (parse-where (view-where-q v)) new-rows)
         (let* ([update-q (string-append "update " (table-name (view-table v)))]
                [set-q (string-append " set " set-query)]
@@ -69,3 +72,5 @@
                [q (string-append update-q set-q where-q)])
           (query-exec (view-connection v) q))
         (raise "update violated view constraints"))))
+
+(define v (baseview "test.db" "test"))

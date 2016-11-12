@@ -109,7 +109,7 @@
     (str-exp
      [(STR) (λ (r) $1)]))))
 
-(define update-parser
+(define (update-parser updatable)
   (parser
    (src-pos)
    (start set-statement)
@@ -124,7 +124,10 @@
           (left * /))
    (grammar    
     (set-statement
-      [(IDENTIFIER = exp) (λ (r) (list (cons $1 ($3 r))))]
+      [(IDENTIFIER = exp) (if (member $1 updatable)
+                              (λ (r) (list (cons $1 ($3 r))))
+                              (error 'update-parser
+                                     "non-updatable column \"~a\" on LHS of update" $1))]
       [(set-statement COMMA set-statement) (λ (r) (append ($1 r) ($3 r)))])
 
     (atom
@@ -144,16 +147,16 @@
   (port-count-lines! port)
   (λ () (lexer port)))
 
-(define (parse-update str)
+(define (parse-update str updatable)
     (if (or (null? str) (not (non-empty-string? str)))
         (λ (r) r)
         (let ([oip (open-input-string str)])
           (begin0
-            (update-parser (lexer-thunk update-lexer oip))
+            ((update-parser updatable) (lexer-thunk update-lexer oip))
             (close-input-port oip)))))
 
-(define (apply-update str rows)
-  (let* ([update-fun (parse-update str)]
+(define (apply-update str rows updatable)
+  (let* ([update-fun (parse-update str updatable)]
          [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
                                   row (update-fun row)))])
     (map row-fun rows)))
