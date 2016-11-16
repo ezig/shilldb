@@ -70,7 +70,10 @@
                                 '>= string>=?
                                 '!= (λ (v1 v2) (not (string=? v1 v2)))))
 
-(define where-parser
+(define (check-types e1 t1 e2 t2)
+    (and (eq? t1 (car e1)) (eq? t2 (car e2))))
+
+(define (where-parser type-map)
   (parser
    (src-pos)
    (start cond)
@@ -86,30 +89,51 @@
           (left * /))
    (grammar
     (basecond
-     [(OP cond CP ) $2]
-     [(num-exp COMP num-exp) (λ (r) ((hash-ref arith-sym-to-func $2) ($1 r) ($3 r)))])
+     [(OP cond CP) $2]
+     [(exp COMP exp) (if (check-types $1 'num $3 'num)
+                         (λ (r) ((hash-ref arith-sym-to-func $2) ((cdr $1) r) ((cdr $3) r)))
+                         (if (check-types $1 'str $3 'str)
+                             (λ (r) ((hash-ref string-sym-to-func $2) ((cdr $1) r) ((cdr $3) r)))
+                             (error 'where-parser
+                             "type error comparing ~a to ~a" (car $1) (car $3))))])
     
     (cond
       [(basecond) $1]
       [(cond AND cond) (and $1 $3)]
       [(cond OR cond) (or $1 $3)])
 
-    (num-atom
-     [(NUM) (λ (r) $1)]
-     [(IDENTIFIER) (λ (r) (hash-ref r $1))]
-     [(OP num-exp CP) $2])
+    (atom
+     [(STR) (cons 'str (λ (r) $1))]
+     [(NUM) (cons 'num (λ (r) $1))]
+     [(IDENTIFIER) (with-handlers ([exn:fail?
+                                    (λ (e)
+                                      (error 'where-parser
+                                             "undefined identifier ~a" $1))])
+                     (cons (hash-ref type-map $1) (λ (r) (hash-ref r $1))))]
+     [(OP exp CP) $2])
     
-    (num-exp
-     [(num-atom) $1]
-     [(num-exp + num-exp) (λ (r) (+ ($1 r) ($3 r)))]
-     [(num-exp - num-exp) (λ (r) (- ($1 r) ($3 r)))]
-     [(num-exp * num-exp) (λ (r) (* ($1 r) ($3 r)))]
-     [(num-exp / num-exp) (λ (r) (/ ($1 r) ($3 r)))])
+    (exp
+     [(atom) $1]
+     [(exp + exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (+ ((cdr $1) r) ((cdr $3) r))))
+                      (if (check-types $1 'str $3 'str)
+                          (cons 'str (λ (r) (string-append ((cdr $1) r) ((cdr $3) r))))
+                          (error 'where-parser
+                             "type error adding ~a to ~a" (car $1) (car $3))))]
+     [(exp - exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (- ((cdr $1) r) ((cdr $3) r))))
+                      (error 'where-parser
+                             "type error subtracting ~a from ~a" (car $1) (car $3)))]
+     [(exp * exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (* ((cdr $1) r) ((cdr $3) r))))
+                      (error 'where-parser
+                             "type error multiplying ~a and ~a" (car $1) (car $3)))]
+     [(exp / exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (/ ((cdr $1) r) ((cdr $3) r))))
+                      (error 'where-parser
+                             "type error dividing ~a by ~a" (car $1) (car $3)))]))))
 
-    (str-exp
-     [(STR) (λ (r) $1)]))))
-
-(define (update-parser updatable)
+(define (update-parser updatable type-map)
   (parser
    (src-pos)
    (start set-statement)
@@ -125,46 +149,68 @@
    (grammar    
     (set-statement
       [(IDENTIFIER = exp) (if (member $1 updatable)
-                              (λ (r) (list (cons $1 ($3 r))))
+                              (if (equal? (car $3) (hash-ref type-map $1))
+                                  (λ (r) (list (cons $1 ((cdr $3) r))))
+                                  (error 'update-parser
+                                         "type error assigning ~a exp to column with type ~a"
+                                         (car $3) (hash-ref type-map $1)))
                               (error 'update-parser
                                      "non-updatable column \"~a\" on LHS of update" $1))]
       [(set-statement COMMA set-statement) (λ (r) (append ($1 r) ($3 r)))])
 
     (atom
-     [(STR) (λ (r) $1)]
-     [(NUM) (λ (r) $1)]
-     [(IDENTIFIER) (λ (r) (hash-ref r $1))]
+     [(STR) (cons 'str (λ (r) $1))]
+     [(NUM) (cons 'num (λ (r) $1))]
+     [(IDENTIFIER) (with-handlers ([exn:fail?
+                                    (λ (e)
+                                      (error 'where-parser
+                                             "undefined identifier ~a" $1))])
+                     (cons (hash-ref type-map $1) (λ (r) (hash-ref r $1))))]
      [(OP exp CP) $2])
     
     (exp
      [(atom) $1]
-     [(exp + exp) (λ (r) (+ ($1 r) ($3 r)))]
-     [(exp - exp) (λ (r) (- ($1 r) ($3 r)))]
-     [(exp * exp) (λ (r) (* ($1 r) ($3 r)))]
-     [(exp / exp) (λ (r) (/ ($1 r) ($3 r)))]))))
+     [(exp + exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (+ ((cdr $1) r) ((cdr $3) r))))
+                      (if (check-types $1 'str $3 'str)
+                          (cons 'str (λ (r) (string-append ((cdr $1) r) ((cdr $3) r))))
+                          (error 'where-parser
+                             "type error adding ~a to ~a" (car $1) (car $3))))]
+     [(exp - exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (- ((cdr $1) r) ((cdr $3) r))))
+                      (error 'where-parser
+                             "type error subtracting ~a from ~a" (car $1) (car $3)))]
+     [(exp * exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (* ((cdr $1) r) ((cdr $3) r))))
+                      (error 'where-parser
+                             "type error multiplying ~a and ~a" (car $1) (car $3)))]
+     [(exp / exp) (if (check-types $1 'num $3 'num)
+                      (cons 'num (λ (r) (/ ((cdr $1) r) ((cdr $3) r))))
+                      (error 'where-parser
+                             "type error dividing ~a by ~a" (car $1) (car $3)))]))))
 
 (define (lexer-thunk lexer port)
   (port-count-lines! port)
   (λ () (lexer port)))
 
-(define (parse-update str updatable)
+(define (parse-update str updatable type-map)
     (if (or (null? str) (not (non-empty-string? str)))
         (λ (r) r)
         (let ([oip (open-input-string str)])
           (begin0
-            ((update-parser updatable) (lexer-thunk update-lexer oip))
+            ((update-parser updatable type-map) (lexer-thunk update-lexer oip))
             (close-input-port oip)))))
 
-(define (apply-update str rows updatable)
-  (let* ([update-fun (parse-update str updatable)]
+(define (apply-update str rows updatable type-map)
+  (let* ([update-fun (parse-update str updatable type-map)]
          [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
                                   row (update-fun row)))])
     (map row-fun rows)))
 
-(define (parse-where str)
+(define (parse-where str type-map)
     (if (or (null? str) (not (non-empty-string? str)))
         (λ (r) #t)
         (let ([oip (open-input-string str)])
           (begin0
-            (where-parser (lexer-thunk where-lexer oip))
+            ((where-parser type-map)(lexer-thunk where-lexer oip))
             (close-input-port oip)))))
