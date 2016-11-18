@@ -5,7 +5,7 @@
 
 (struct column (cid name type notnull default primary-key) #:transparent)
 (struct table (name type-map columns) #:transparent)
-(struct view (connection table colnames where-fun where-q updatable insertable deletable) #:transparent)
+(struct view (connection table colnames where-q updatable insertable deletable) #:transparent)
 
 (define (sqlite3-type-to-sym type)
   (if (or (string=? type "text") (string-contains? type "char"))
@@ -18,18 +18,47 @@
          [tableinfo (query-rows connection
                                 (string-append "PRAGMA table_info(" tablename ")"))]
          [columns (map (λ (col) (apply column (vector->list col))) tableinfo)]
+         [column-hash (make-hash (map (λ (col) (cons (column-name col) col)) columns))]
          [type-map (make-hash (map (λ (col) (cons (column-name col)
                                        (sqlite3-type-to-sym (column-type col)))) columns))]
-         [t (table tablename type-map columns)]
-         [column-names (map (λ (col) (column-name col)) (table-columns t))])
-    (view connection t column-names (λ (r) #t) null column-names #t #t)))
+         [t (table tablename type-map column-hash)]
+         [column-names (map (λ (col) (column-name col)) columns)])
+    (view connection t column-names null column-names #t #t)))
+
+(define (list-unique? l)
+  (define (helper l seen)
+    (if (empty? l)
+        #t
+        (let ([hd (car l)]
+               [tl (cdr l)])
+           (if (member hd seen)
+               #f
+               (helper tl (cons hd seen))))))
+  (if (<= (length l) 1)
+      #t
+      (helper l (list))))
+
+; Returns s1 - s2
+(define (set-diff s1 s2)
+  (filter (λ (e) (not (member e s2))) s1))
 
 (define/contract (select v cols)
   (-> view? string? view?)
-  (let ([cols (map string-trim (string-split cols))])
+  (define (valid-default v colname)
+    (let* ([col (hash-ref (table-columns (view-table v)) colname)]
+          [default-value-null? (sql-null? (column-default col))]
+          [not-null? (equal? 1 (column-notnull col))])
+          (not (and not-null? default-value-null?))))
+  (let* ([cols (map string-trim (string-split cols ","))]
+        [cols-unique? (list-unique? cols)]
+        [cols-simple? (subset? cols (view-colnames v))]
+        [valid-defaults? (andmap (λ (c) (valid-default v c))
+                                 (set-diff (view-colnames v) cols))])
+    (display cols-unique?)
     (struct-copy view v
                  [colnames cols]
-                 [updatable (set-intersect (view-colnames v) cols)])))
+                 [updatable (set-intersect (view-colnames v) cols)]
+                 [insertable (and cols-unique? cols-simple? valid-defaults?)])))
 
 (define (append-to-where where-q cond)
   (if (null? where-q)
