@@ -4,7 +4,7 @@
 (require "sql_parse.rkt")
 
 (struct column (cid name type notnull default primary-key) #:transparent)
-(struct table (name type-map columns) #:transparent)
+(struct table (name type-map colnames columns) #:transparent)
 (struct view (connection table colnames where-q updatable insertable deletable) #:transparent)
 
 (define (sqlite3-type-to-sym type)
@@ -21,8 +21,8 @@
          [column-hash (make-hash (map (λ (col) (cons (column-name col) col)) columns))]
          [type-map (make-hash (map (λ (col) (cons (column-name col)
                                        (sqlite3-type-to-sym (column-type col)))) columns))]
-         [t (table tablename type-map column-hash)]
-         [column-names (map (λ (col) (column-name col)) columns)])
+         [column-names (map (λ (col) (column-name col)) columns)]
+         [t (table tablename type-map column-names column-hash)])
     (view connection t column-names null column-names #t #t)))
 
 (define (list-unique? l)
@@ -42,19 +42,19 @@
 (define (set-diff s1 s2)
   (filter (λ (e) (not (member e s2))) s1))
 
-(define/contract (select v cols)
-  (-> view? string? view?)
-  (define (valid-default v colname)
+(define (valid-default v colname)
     (let* ([col (hash-ref (table-columns (view-table v)) colname)]
           [default-value-null? (sql-null? (column-default col))]
           [not-null? (equal? 1 (column-notnull col))])
           (not (and not-null? default-value-null?))))
+
+(define/contract (select v cols)
+  (-> view? string? view?)
   (let* ([cols (map string-trim (string-split cols ","))]
         [cols-unique? (list-unique? cols)]
         [cols-simple? (subset? cols (view-colnames v))]
         [valid-defaults? (andmap (λ (c) (valid-default v c))
                                  (set-diff (view-colnames v) cols))])
-    (display cols-unique?)
     (struct-copy view v
                  [colnames cols]
                  [updatable (set-intersect (view-colnames v) cols)]
@@ -110,4 +110,30 @@
           (query-exec (view-connection v) q))
         (raise "update violated view constraints"))))
 
+(define/contract (insert v cols values)
+  (-> (λ (v) (and (view? v) (view-insertable v))) string? string? any/c)
+  (let* ([cols (map string-trim (string-split cols ","))]
+         [values (map string-trim (string-split values ","))]
+         [valid-cols? (subset? cols (view-colnames v))]
+         [missing-cols (set-diff (table-colnames (view-table v)) cols)]
+         [valid-defaults? (andmap (λ (c) (valid-default v c)) missing-cols)])
+    (if (not valid-cols?)
+        (raise "insert invalid column names for view")
+        (if (not valid-defaults?)
+            (raise "insert invalid defaults for missing columns")
+            (let* ([defaults (map (λ (c)
+                                    (column-default (hash-ref (table-columns (view-table v)) c))) missing-cols)]
+                   [new-row (make-immutable-hash (zip (append cols missing-cols) (append values defaults)))]
+                   [type-map (table-type-map (view-table v))]
+                   [valid-row? ((parse-where (view-where-q v) type-map) new-row)])
+                   (if (not valid-row?)
+                       (raise "insert violated view constraints")
+                       (let* ([defaults (map (λ (d) (if (sql-null? d)
+                                                        "null"
+                                                        (~a d))) defaults)]
+                              [cols (string-join (append cols missing-cols) ",")]
+                              [values (string-join (append values defaults) ",")]
+                              [q (~a "insert into " (table-name (view-table v)) "(" cols ")" " values (" values ")")])
+                         (query-exec (view-connection v) q))))))))
+                   
 (define v (baseview "test.db" "students"))
