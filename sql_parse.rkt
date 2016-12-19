@@ -23,33 +23,18 @@
   [identifier (:: (:or letter #\_) (:* (:or letter digit #\_)))])
                                      
 
-(define where-lexer
+(define sql-lexer
   (lexer-src-pos
    [(eof) 'EOF]
    [(:or #\tab #\space)
-    (return-without-pos (where-lexer input-port))]
+    (return-without-pos (sql-lexer input-port))]
    [(:or "+" "-" "*" "/") (string->symbol lexeme)]
    [(:or "<" ">" "=" "!=" "<=" ">=") (token-COMP (string->symbol lexeme))]
+   ["," 'COMMA]
    ["(" 'OP]
    [")" 'CP]
    ["and" 'AND]
    ["or" 'OR]
-   [identifier (token-IDENTIFIER lexeme)]
-   [(:: #\' (:* any-char) #\')
-    (token-STR (substring lexeme 1 (- (string-length lexeme) 1)))]
-   [(:+ digit) (token-NUM (string->number lexeme))]
-   [(:: (:+ digit) #\. (:* digit)) (token-NUM (string->number lexeme))]))
-
-(define update-lexer
-  (lexer-src-pos
-   [(eof) 'EOF]
-   [(:or #\tab #\space)
-    (return-without-pos (update-lexer input-port))]
-   [(:or "+" "-" "*" "/") (string->symbol lexeme)]
-   ["," 'COMMA]
-   ["=" '=]
-   ["(" 'OP]
-   [")" 'CP]
    [identifier (token-IDENTIFIER lexeme)]
    [(:: #\' (:* any-char) #\')
     (token-STR (substring lexeme 1 (- (string-length lexeme) 1)))]
@@ -81,7 +66,7 @@
    (tokens value-tokens op-tokens)
    (error
     (λ (tok-ok? tok-name tok-value start-pos end-pos)
-      (parse-where "(")(error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
+      (error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
              tok-name tok-value (position-offset start-pos))))
    (precs (left OR)
           (left AND)
@@ -141,22 +126,25 @@
    (tokens value-tokens op-tokens)
    (error
     (λ (tok-ok? tok-name tok-value start-pos end-pos)
-      (parse-where "(")(error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
+      (error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
              tok-name tok-value (position-offset start-pos))))
    (precs (left COMMA)
           (left + -)
           (left * /))
    (grammar    
     (set-statement
-      [(IDENTIFIER = exp) (if (member $1 updatable)
-                              (if (equal? (car $3) (hash-ref type-map $1))
-                                  (λ (r) (list (cons $1 ((cdr $3) r))))
-                                  (error 'update-parser
-                                         "type error assigning ~a exp to column with type ~a"
-                                         (car $3) (hash-ref type-map $1)))
-                              (error 'update-parser
-                                     "non-updatable column \"~a\" on LHS of update" $1))]
-      [(set-statement COMMA set-statement) (λ (r) (append ($1 r) ($3 r)))])
+      [(IDENTIFIER COMP exp) (if (eq? $2 '=)
+                                 (if (member $1 updatable)
+                                     (if (equal? (car $3) (hash-ref type-map $1))
+                                         (λ (r) (list (cons $1 ((cdr $3) r))))
+                                         (error 'update-parser
+                                                "type error assigning ~a exp to column with type ~a"
+                                                (car $3) (hash-ref type-map $1)))
+                                     (error 'update-parser
+                                            "non-updatable column \"~a\" on LHS of update" $1))
+                                 (error 'update-parser
+                                        "disallowed comparison ~a in update" $2))]
+[(set-statement COMMA set-statement) (λ (r) (append ($1 r) ($3 r)))])
 
     (atom
      [(STR) (cons 'str (λ (r) $1))]
@@ -189,16 +177,16 @@
                       (error 'where-parser
                              "type error dividing ~a by ~a" (car $1) (car $3)))]))))
 
-(define (lexer-thunk lexer port)
+(define (lexer-thunk port)
   (port-count-lines! port)
-  (λ () (lexer port)))
+  (λ () (sql-lexer port)))
 
 (define (parse-update str updatable type-map)
     (if (or (null? str) (not (non-empty-string? str)))
         (λ (r) r)
         (let ([oip (open-input-string str)])
           (begin0
-            ((update-parser updatable type-map) (lexer-thunk update-lexer oip))
+            ((update-parser updatable type-map) (lexer-thunk oip))
             (close-input-port oip)))))
 
 (define (apply-update str rows updatable type-map)
@@ -212,5 +200,9 @@
         (λ (r) #t)
         (let ([oip (open-input-string str)])
           (begin0
-            ((where-parser type-map)(lexer-thunk where-lexer oip))
+            ((where-parser type-map)(lexer-thunk oip))
             (close-input-port oip)))))
+
+(define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
+(define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
+(define w (parse-where "col1 < col2" tm))
