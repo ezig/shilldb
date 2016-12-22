@@ -1,19 +1,17 @@
 #lang racket
 
 (provide parse-where)
-(provide apply-update)
+;(provide apply-update)
 
 (require parser-tools/yacc
          parser-tools/lex
          (prefix-in : parser-tools/lex-sre))
 
-(define-tokens value-tokens (IDENTIFIER NUM STR COMP))
+(define-tokens value-tokens (IDENTIFIER NUM STR COMP ADDOP MULOP))
 (define-empty-tokens op-tokens
   (OP CP            ; ( )
       AND              ; and
       OR               ; or
-      + - * /
-      =
       COMMA
       EOF))
                                         
@@ -28,7 +26,8 @@
    [(eof) 'EOF]
    [(:or #\tab #\space)
     (return-without-pos (sql-lexer input-port))]
-   [(:or "+" "-" "*" "/") (string->symbol lexeme)]
+   [(:or "+" "-") (token-ADDOP (string->symbol lexeme))]
+   [(:or "*" "/") (token-MULOP (string->symbol lexeme))]
    [(:or "<" ">" "=" "!=" "<=" ">=") (token-COMP (string->symbol lexeme))]
    ["," 'COMMA]
    ["(" 'OP]
@@ -41,156 +40,178 @@
    [(:+ digit) (token-NUM (string->number lexeme))]
    [(:: (:+ digit) #\. (:* digit)) (token-NUM (string->number lexeme))]))
 
-(define arith-sym-to-func (hash '= =
+(define arith-sym-to-fun (hash '= =
                                 '< <
                                 '<= <=
                                 '> >
                                 '>= >=
                                 '!= (λ (v1 v2) (not (= v1 v2)))))
 
-(define string-sym-to-func (hash '= string=?
+(define string-sym-to-fun (hash '= string=?
                                 '< string<?
                                 '<= string<=?
                                 '> string>?
                                 '>= string>=?
                                 '!= (λ (v1 v2) (not (string=? v1 v2)))))
 
-(define (check-types e1 t1 e2 t2)
-    (and (eq? t1 (car e1)) (eq? t2 (car e2))))
+(struct atom (type is-id? val) #:transparent)
+(struct exp (op type e1 e2) #:transparent)
+(struct cond (cop e1 e2) #:transparent)
+(struct clause (connector c1 c2) #:transparent)
+(struct ast (clause-type root) #:transparent)
 
-(define (where-parser type-map)
-  (parser
-   (src-pos)
-   (start cond)
-   (end EOF)
-   (tokens value-tokens op-tokens)
-   (error
-    (λ (tok-ok? tok-name tok-value start-pos end-pos)
-      (error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
-             tok-name tok-value (position-offset start-pos))))
-   (precs (left OR)
-          (left AND)
-          (left + -)
-          (left * /))
-   (grammar
-    (basecond
-     [(OP cond CP) $2]
-     [(exp COMP exp) (if (check-types $1 'num $3 'num)
-                         (λ (r) ((hash-ref arith-sym-to-func $2) ((cdr $1) r) ((cdr $3) r)))
-                         (if (check-types $1 'str $3 'str)
-                             (λ (r) ((hash-ref string-sym-to-func $2) ((cdr $1) r) ((cdr $3) r)))
-                             (error 'where-parser
-                             "type error comparing ~a to ~a" (car $1) (car $3))))])
-    
-    (cond
-      [(basecond) $1]
-      [(cond AND cond) (and $1 $3)]
-      [(cond OR cond) (or $1 $3)])
+(define/contract (get-type e)
+      (-> (or/c exp? atom?) symbol?)
+      (if (exp? e)
+          (exp-type e)
+          (atom-type e)))
 
-    (atom
-     [(STR) (cons 'str (λ (r) $1))]
-     [(NUM) (cons 'num (λ (r) $1))]
-     [(IDENTIFIER) (with-handlers ([exn:fail?
-                                    (λ (e)
-                                      (error 'where-parser
-                                             "undefined identifier ~a" $1))])
-                     (cons (hash-ref type-map $1) (λ (r) (hash-ref r $1))))]
-     [(OP exp CP) $2])
-    
-    (exp
-     [(atom) $1]
-     [(exp + exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (+ ((cdr $1) r) ((cdr $3) r))))
-                      (if (check-types $1 'str $3 'str)
-                          (cons 'str (λ (r) (string-append ((cdr $1) r) ((cdr $3) r))))
-                          (error 'where-parser
-                             "type error adding ~a to ~a" (car $1) (car $3))))]
-     [(exp - exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (- ((cdr $1) r) ((cdr $3) r))))
-                      (error 'where-parser
-                             "type error subtracting ~a from ~a" (car $1) (car $3)))]
-     [(exp * exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (* ((cdr $1) r) ((cdr $3) r))))
-                      (error 'where-parser
-                             "type error multiplying ~a and ~a" (car $1) (car $3)))]
-     [(exp / exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (/ ((cdr $1) r) ((cdr $3) r))))
-                      (error 'where-parser
-                             "type error dividing ~a by ~a" (car $1) (car $3)))]))))
+(define/contract (build-parser p-type)
+  (-> (one-of/c 'where 'update) any/c)
+  (λ (type-map [updatable null])
+    (define (parse-cond cop e1 e2)
+      (let ([type1 (get-type e1)]
+            [type2 (get-type e2)])
+        (if (eq? type1 type2)
+            (case p-type
+              [(where) (cond cop e1 e2)]
+              [(update)
+               (if (eq? cop '=)
+                 (if (and (atom? e1) (atom-is-id? e1) (member (atom-val e1) updatable))                    
+                     (cond cop e1 e2)
+                     (error 'parser
+                            "lhs ~a of assignment in update does not refer to updatable column" e1))
+                 (error 'parser "illegal comparison ~a in update" cop))])
+            (error 'parser
+                   "type error comparing ~a to ~a" type1 type2))))
+    (define (parse-binop op e1 e2)
+      (let ([type1 (get-type e1)]
+            [type2 (get-type e2)])
+        (if (and (eq? type1 type2)
+                 (or (eq? type1 'num) (eq? op '+)))
+            (exp op type1 e1 e2)
+            (error 'parser "illegal types ~a and ~a to binop ~a"
+                   type1 type2 op))))
+    (parser
+     (src-pos)
+     (start clause)
+     (end EOF)
+     (tokens value-tokens op-tokens)
+     (error
+      (λ (tok-ok? tok-name tok-value start-pos end-pos)
+        (error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
+               tok-name tok-value (position-offset start-pos))))
+     (precs (left COMMA)
+            (left OR)
+            (left AND)
+            (left ADDOP)
+            (left MULOP))
+     (grammar
+      (cond
+        [(OP cond CP) $2]
+        [(exp COMP exp) (parse-cond $2 $1 $3)])
+      (clause
+       [(cond) $1]
+       [(clause COMMA clause) (if (eq? p-type 'where)
+                                  (error 'parser
+                                         "illegal token , for parser type where")
+                                  (clause 'COMMA $1 $3))]
+       [(clause AND clause) (if (eq? p-type 'where)
+                                (clause 'AND $1 $3)
+                                (error 'parser
+                                       "illegal token and for parser type ~a" p-type))]
+       [(clause OR clause) (if (eq? p-type 'where)
+                               (clause 'OR $1 $3)
+                               (error 'parser
+                                      "illegal token or for parser type ~a" p-type))])   
+      (atom
+       [(STR) (atom 'str #f $1)]
+       [(NUM) (atom 'num #f $1)]
+       [(IDENTIFIER) (with-handlers ([exn:fail?
+                                      (λ (e)
+                                        (error 'parser
+                                               "undefined identifier ~a" $1))])
+                       (atom (hash-ref type-map $1) #t $1))]
+       [(OP exp CP) $2])
+      (exp
+       [(atom) $1]
+       [(exp ADDOP exp) (parse-binop $2 $1 $3)]
+       [(exp MULOP exp) (parse-binop $2 $1 $3)])))))
 
-(define (update-parser updatable type-map)
-  (parser
-   (src-pos)
-   (start set-statement)
-   (end EOF)
-   (tokens value-tokens op-tokens)
-   (error
-    (λ (tok-ok? tok-name tok-value start-pos end-pos)
-      (error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
-             tok-name tok-value (position-offset start-pos))))
-   (precs (left COMMA)
-          (left + -)
-          (left * /))
-   (grammar    
-    (set-statement
-      [(IDENTIFIER COMP exp) (if (eq? $2 '=)
-                                 (if (member $1 updatable)
-                                     (if (equal? (car $3) (hash-ref type-map $1))
-                                         (λ (r) (list (cons $1 ((cdr $3) r))))
-                                         (error 'update-parser
-                                                "type error assigning ~a exp to column with type ~a"
-                                                (car $3) (hash-ref type-map $1)))
-                                     (error 'update-parser
-                                            "non-updatable column \"~a\" on LHS of update" $1))
-                                 (error 'update-parser
-                                        "disallowed comparison ~a in update" $2))]
-[(set-statement COMMA set-statement) (λ (r) (append ($1 r) ($3 r)))])
+(define (ast-to-string ast)
+  (define (aux t)
+    (match t
+      [(clause connector c1 c2)
+       (if (eq? (ast-clause-type ast) 'where)
+           (format "(~a) ~a (~a)" (aux c1) connector (aux c2))
+           (format "~a ~a ~a" (aux c1) connector (aux c2)))]
+      [(cond cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
+      [(exp op type e1 e2) (format "~a ~a ~a" (aux e1) op (aux e2))]
+      [(atom type is-id? val) (~a val)]))
+  (aux (ast-root ast)))
 
-    (atom
-     [(STR) (cons 'str (λ (r) $1))]
-     [(NUM) (cons 'num (λ (r) $1))]
-     [(IDENTIFIER) (with-handlers ([exn:fail?
-                                    (λ (e)
-                                      (error 'where-parser
-                                             "undefined identifier ~a" $1))])
-                     (cons (hash-ref type-map $1) (λ (r) (hash-ref r $1))))]
-     [(OP exp CP) $2])
-    
-    (exp
-     [(atom) $1]
-     [(exp + exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (+ ((cdr $1) r) ((cdr $3) r))))
-                      (if (check-types $1 'str $3 'str)
-                          (cons 'str (λ (r) (string-append ((cdr $1) r) ((cdr $3) r))))
-                          (error 'where-parser
-                             "type error adding ~a to ~a" (car $1) (car $3))))]
-     [(exp - exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (- ((cdr $1) r) ((cdr $3) r))))
-                      (error 'where-parser
-                             "type error subtracting ~a from ~a" (car $1) (car $3)))]
-     [(exp * exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (* ((cdr $1) r) ((cdr $3) r))))
-                      (error 'where-parser
-                             "type error multiplying ~a and ~a" (car $1) (car $3)))]
-     [(exp / exp) (if (check-types $1 'num $3 'num)
-                      (cons 'num (λ (r) (/ ((cdr $1) r) ((cdr $3) r))))
-                      (error 'where-parser
-                             "type error dividing ~a by ~a" (car $1) (car $3)))]))))
+(define (binop-sym-to-fun op type)
+  (case op
+    [(+) (if (eq? type 'str)
+             string-append
+             +)]
+    [(-) -]
+    [(*) *]
+    [(/) /]
+    [else error 'binop-sym-to-fun "invalid binop ~a" op]))
+
+(define/contract (where-ast-to-fun ast)
+  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'where))) procedure?)
+  (define (aux t)
+    (match t
+      [(clause connector c1 c2)
+       (case connector
+         [(AND) (and (aux c1) (aux c2))]
+         [(OR) (or (aux c1) (aux c2))]
+         [else error 'where-ast-to-fun "invalid connector ~a for where clause" connector])]
+      [(cond cop e1 e2) (let ([comp-fun (if (eq? (get-type e1) 'str)
+                                           (hash-ref string-sym-to-fun cop)
+                                           (hash-ref arith-sym-to-fun cop))])
+                          (λ (r) (comp-fun ((aux e1) r) ((aux e2) r))))]
+      [(exp op type e1 e2) (λ (r) ((binop-sym-to-fun op type) ((aux e1) r) ((aux e2) r)))]
+      [(atom type is-id? val) (if is-id?
+                                  (λ (r) (hash-ref r val))
+                                  (λ (r) val))]))
+  (aux (ast-root ast)))
+
+(define/contract (update-ast-to-fun ast)
+  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'update))) procedure?)
+  (define (aux t)
+    (match t
+      [(clause connector c1 c2)
+       (case connector
+         [(COMMA) (λ (r) (append ((aux c1) r) ((aux c2) r)))]
+         [else error 'update-ast-to-fun "invalid connector ~a for update clause" connector])]
+      [(cond cop e1 e2) (λ (r) (list (cons (atom-val e1) ((aux e2) r))))]
+      [(exp op type e1 e2) (λ (r) ((binop-sym-to-fun op type) ((aux e1) r) ((aux e2) r)))]
+      [(atom type is-id? val) (if is-id?
+                                  (λ (r) (hash-ref r val))
+                                  (λ (r) val))]))
+  (aux (ast-root ast)))
+
+(define where-parser (build-parser 'where))
+(define update-parser (build-parser 'update))
 
 (define (lexer-thunk port)
   (port-count-lines! port)
   (λ () (sql-lexer port)))
 
-(define (parse-update str updatable type-map)
+(define (parse-update str type-map updatable)
     (if (or (null? str) (not (non-empty-string? str)))
         (λ (r) r)
         (let ([oip (open-input-string str)])
           (begin0
-            ((update-parser updatable type-map) (lexer-thunk oip))
+            ((update-parser type-map updatable) (lexer-thunk oip))
             (close-input-port oip)))))
 
 (define (apply-update str rows updatable type-map)
-  (let* ([update-fun (parse-update str updatable type-map)]
+  (let* ([update-ast (ast 'update (parse-update str type-map updatable))]
+         [update-fun (update-ast-to-fun update-ast)]
          [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
                                   row (update-fun row)))])
     (map row-fun rows)))
@@ -200,9 +221,10 @@
         (λ (r) #t)
         (let ([oip (open-input-string str)])
           (begin0
-            ((where-parser type-map)(lexer-thunk oip))
+            (ast 'where ((where-parser type-map) (lexer-thunk oip)))
             (close-input-port oip)))))
 
 (define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
+(define updatable (list "col1"))
 (define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
 (define w (parse-where "col1 < col2" tm))
