@@ -1,7 +1,10 @@
 #lang racket
 
 (provide parse-where)
-;(provide apply-update)
+(provide restrict-where)
+(provide empty-where)
+(provide where-to-fun)
+(provide apply-update)
 
 (require parser-tools/yacc
          parser-tools/lex
@@ -12,7 +15,7 @@
   (OP CP            ; ( )
       AND              ; and
       OR               ; or
-      COMMA
+      COMMA            ; ,
       EOF))
                                         
 (define-lex-abbrevs
@@ -39,20 +42,6 @@
     (token-STR (substring lexeme 1 (- (string-length lexeme) 1)))]
    [(:+ digit) (token-NUM (string->number lexeme))]
    [(:: (:+ digit) #\. (:* digit)) (token-NUM (string->number lexeme))]))
-
-(define arith-sym-to-fun (hash '= =
-                                '< <
-                                '<= <=
-                                '> >
-                                '>= >=
-                                '!= (λ (v1 v2) (not (= v1 v2)))))
-
-(define string-sym-to-fun (hash '= string=?
-                                '< string<?
-                                '<= string<=?
-                                '> string>?
-                                '>= string>=?
-                                '!= (λ (v1 v2) (not (string=? v1 v2)))))
 
 (struct atom (type is-id? val) #:transparent)
 (struct exp (op type e1 e2) #:transparent)
@@ -158,73 +147,99 @@
     [(-) -]
     [(*) *]
     [(/) /]
-    [else error 'binop-sym-to-fun "invalid binop ~a" op]))
+    [else (error 'binop-sym-to-fun "invalid binop ~a" op)]))
 
-(define/contract (where-ast-to-fun ast)
-  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'where))) procedure?)
+(define (comp-sym-to-fun op type)
+  (define arith-sym-to-fun (hash '= =
+                                 '< <
+                                 '<= <=
+                                 '> >
+                                 '>= >=
+                                 '!= (λ (v1 v2) (not (= v1 v2)))))
+  (define string-sym-to-fun (hash '= string=?
+                                  '< string<?
+                                  '<= string<=?
+                                  '> string>?
+                                  '>= string>=?
+                                  '!= (λ (v1 v2) (not (string=? v1 v2)))))
+  (if (eq? type 'str)
+      (hash-ref string-sym-to-fun op)
+      (hash-ref arith-sym-to-fun op)))
+
+(define/contract (ast-to-fun ast)
+  (-> ast? procedure?)
   (define (aux t)
     (match t
       [(clause connector c1 c2)
        (case connector
          [(AND) (and (aux c1) (aux c2))]
          [(OR) (or (aux c1) (aux c2))]
-         [else error 'where-ast-to-fun "invalid connector ~a for where clause" connector])]
-      [(cond cop e1 e2) (let ([comp-fun (if (eq? (get-type e1) 'str)
-                                           (hash-ref string-sym-to-fun cop)
-                                           (hash-ref arith-sym-to-fun cop))])
-                          (λ (r) (comp-fun ((aux e1) r) ((aux e2) r))))]
-      [(exp op type e1 e2) (λ (r) ((binop-sym-to-fun op type) ((aux e1) r) ((aux e2) r)))]
-      [(atom type is-id? val) (if is-id?
-                                  (λ (r) (hash-ref r val))
-                                  (λ (r) val))]))
-  (aux (ast-root ast)))
-
-(define/contract (update-ast-to-fun ast)
-  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'update))) procedure?)
-  (define (aux t)
-    (match t
-      [(clause connector c1 c2)
-       (case connector
          [(COMMA) (λ (r) (append ((aux c1) r) ((aux c2) r)))]
-         [else error 'update-ast-to-fun "invalid connector ~a for update clause" connector])]
-      [(cond cop e1 e2) (λ (r) (list (cons (atom-val e1) ((aux e2) r))))]
+         [else (error 'ast-to-fun "invalid connector ~a" connector)])]
+      [(cond cop e1 e2)
+       (case (ast-clause-type ast)
+         [(where) (λ (r) ((comp-sym-to-fun cop (get-type e1)) ((aux e1) r) ((aux e2) r)))]
+         [(update) (λ (r) (list (cons (atom-val e1) ((aux e2) r))))]
+         [else (error 'ast-to-fun "invalid clause type ~a" (ast-clause-type ast))])]
       [(exp op type e1 e2) (λ (r) ((binop-sym-to-fun op type) ((aux e1) r) ((aux e2) r)))]
       [(atom type is-id? val) (if is-id?
                                   (λ (r) (hash-ref r val))
                                   (λ (r) val))]))
-  (aux (ast-root ast)))
-
-(define where-parser (build-parser 'where))
-(define update-parser (build-parser 'update))
+  (let ([root (ast-root ast)])
+    (if (null? root)
+        (case (ast-clause-type ast)
+          [(where) (λ (r) #t)]
+          [(update) (λ (r) r)]
+          [else (error 'ast-to-fun "invalid clause type ~a" (ast-clause-type ast))])
+        (aux root))))
 
 (define (lexer-thunk port)
   (port-count-lines! port)
   (λ () (sql-lexer port)))
 
-(define (parse-update str type-map updatable)
-    (if (or (null? str) (not (non-empty-string? str)))
-        (λ (r) r)
-        (let ([oip (open-input-string str)])
+(define (parse-clause str clause-type p-args)
+     (if (or (null? str) (not (non-empty-string? str)))
+        (ast 'where null)
+        (let ([oip (open-input-string str)]
+              [parser (case clause-type
+                        [(where) where-parser]
+                        [(update) update-parser]
+                        [else (error 'parse-clause "unsupported clause type ~a" clause-type)])])
           (begin0
-            ((update-parser type-map updatable) (lexer-thunk oip))
+            (ast clause-type ((apply parser p-args) (lexer-thunk oip)))
             (close-input-port oip)))))
+
+(define where-parser (build-parser 'where))
+(define update-parser (build-parser 'update))
+
+(define (parse-update str type-map updatable)
+  (parse-clause str 'update (list type-map updatable)))
+(define (parse-where str type-map)
+  (parse-clause str 'where (list type-map)))
+
+(define empty-where
+  (ast 'where null))
+
+(define/contract (restrict-where where-ast restrict-str type-map)
+  (-> ast? string? hash? ast?)
+  (let ([restrict-ast (parse-where restrict-str type-map)]
+        [old-root (ast-root where-ast)])
+    (if (null? old-root)
+        restrict-ast
+        (ast 'where (clause 'AND old-root (ast-root restrict-ast))))))
+
+(define/contract (where-to-fun ast)
+  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'where))) procedure?)
+  (ast-to-fun ast))
 
 (define (apply-update str rows updatable type-map)
   (let* ([update-ast (ast 'update (parse-update str type-map updatable))]
-         [update-fun (update-ast-to-fun update-ast)]
+         [update-fun (ast-to-fun update-ast)]
          [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
                                   row (update-fun row)))])
     (map row-fun rows)))
 
-(define (parse-where str type-map)
-    (if (or (null? str) (not (non-empty-string? str)))
-        (λ (r) #t)
-        (let ([oip (open-input-string str)])
-          (begin0
-            (ast 'where ((where-parser type-map) (lexer-thunk oip)))
-            (close-input-port oip)))))
-
-(define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
-(define updatable (list "col1"))
-(define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
-(define w (parse-where "col1 < col2" tm))
+; (define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
+; (define updatable (list "col1"))
+; (define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
+; (define w (parse-where "col1 < col2" tm))
