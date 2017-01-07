@@ -6,6 +6,7 @@
 (provide where-to-fun)
 (provide apply-update)
 
+(require "util.rkt")
 (require parser-tools/yacc
          parser-tools/lex
          (prefix-in : parser-tools/lex-sre))
@@ -21,8 +22,7 @@
 (define-lex-abbrevs
   [letter (:or (:/ "a" "z") (:/ #\A #\Z) )]
   [digit (:/ #\0 #\9)]
-  [identifier (:: (:or letter #\_) (:* (:or letter digit #\_)))])
-                                     
+  [identifier (:: (:or letter #\_) (:* (:or letter digit #\_)))])                                     
 
 (define sql-lexer
   (lexer-src-pos
@@ -42,12 +42,6 @@
     (token-STR (substring lexeme 1 (- (string-length lexeme) 1)))]
    [(:+ digit) (token-NUM (string->number lexeme))]
    [(:: (:+ digit) #\. (:* digit)) (token-NUM (string->number lexeme))]))
-
-(struct atom (type is-id? val) #:transparent)
-(struct exp (op type e1 e2) #:transparent)
-(struct cond (cop e1 e2) #:transparent)
-(struct clause (connector c1 c2) #:transparent)
-(struct ast (clause-type root) #:transparent)
 
 (define/contract (get-type e)
       (-> (or/c exp? atom?) symbol?)
@@ -127,17 +121,6 @@
        [(exp ADDOP exp) (parse-binop $2 $1 $3)]
        [(exp MULOP exp) (parse-binop $2 $1 $3)])))))
 
-(define (ast-to-string ast)
-  (define (aux t)
-    (match t
-      [(clause connector c1 c2)
-       (if (eq? (ast-clause-type ast) 'where)
-           (format "(~a) ~a (~a)" (aux c1) connector (aux c2))
-           (format "~a ~a ~a" (aux c1) connector (aux c2)))]
-      [(cond cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
-      [(exp op type e1 e2) (format "~a ~a ~a" (aux e1) op (aux e2))]
-      [(atom type is-id? val) (~a val)]))
-  (aux (ast-root ast)))
 
 (define (binop-sym-to-fun op type)
   (case op
@@ -233,7 +216,7 @@
   (ast-to-fun ast))
 
 (define (apply-update str rows updatable type-map)
-  (let* ([update-ast (ast 'update (parse-update str type-map updatable))]
+  (let* ([update-ast (parse-update str type-map updatable)]
          [update-fun (ast-to-fun update-ast)]
          [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
                                   row (update-fun row)))])
