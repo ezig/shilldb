@@ -4,18 +4,19 @@
 (require "sql_parse.rkt")
 (require "util.rkt")
 
-(define (baseview filename tablename)
-  (let* ([connection (sqlite3-connect #:database filename)]
+(define (create-view filename tablename)
+  (let* ([cinfo (conn-info filename 'sqlite3)]
          ; Fix string-append hack for tableinfo to avoid injection attacks
-         [tableinfo (query-rows connection
-                                (string-append "PRAGMA table_info(" tablename ")"))]
+         [tableinfo (connect-and-exec
+                     cinfo
+                     (λ (c) (query-rows c (string-append "PRAGMA table_info(" tablename ")"))))]
          [columns (map (λ (col) (apply column (vector->list col))) tableinfo)]
          [column-hash (make-hash (map (λ (col) (cons (column-name col) col)) columns))]
          [type-map (make-hash (map (λ (col) (cons (column-name col)
                                        (type-to-sym 'sqlite3 (column-type col)))) columns))]
          [column-names (map (λ (col) (column-name col)) columns)]
          [t (table tablename type-map column-names column-hash)])
-    (view connection 'sqlite3 t column-names empty-where column-names #t #t)))
+    (view cinfo t column-names empty-where column-names #t #t)))
 
 (define (valid-default v colname)
     (let* ([col (hash-ref (table-columns (view-table v)) colname)]
@@ -43,11 +44,13 @@
 
 (define/contract (fetch v)
   (-> view? any)
-  (query-rows (view-connection v) (query-string v)))
+  (connect-and-exec (view-conn-info v)
+                    (λ (c) (query-rows c (query-string v)))))
 
 (define/contract (delete v)
   (-> (and/c view? view-deletable) any/c)
-  (query-exec (view-connection v) (delete-query-string v)))
+  (connect-and-exec (view-conn-info v)
+                    (λ (c) (query-exec c (delete-query-string v)))))
 
 (define/contract (update v set-query [where-cond ""])
   (->* ((and/c view? (λ (v) (not (null? (view-updatable v))))) string?)
@@ -62,7 +65,8 @@
          [type-map (table-type-map (view-table v))]
          [new-rows (apply-update set-query row-hts (view-updatable v) type-map)])
     (if (andmap (where-to-fun (view-where-q v)) new-rows)
-        (query-exec (view-connection v) (update-query-string new-v set-query))
+        (connect-and-exec (view-conn-info v)
+                          (λ (c) (query-exec c (update-query-string new-v set-query))))
         (raise "update violated view constraints"))))
 
 ; values as values not as strings
@@ -86,6 +90,8 @@
                    [valid-row? ((where-to-fun (view-where-q v)) new-row)])
                    (if (not valid-row?)
                        (raise "insert violated view constraints")
-                       (query-exec (view-connection v) (insert-query-string v all-cols all-values))))))))
+                       (connect-and-exec
+                        (view-conn-info v)
+                        (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
                    
-(define v (baseview "test.db" "students"))
+(define v (create-view "test.db" "students"))
