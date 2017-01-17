@@ -1,6 +1,7 @@
 #lang racket
 
 (provide parse-where)
+(provide parse-join)
 (provide restrict-where)
 (provide empty-where)
 (provide where-to-fun)
@@ -50,7 +51,7 @@
           (atom-type e)))
 
 (define/contract (build-parser p-type)
-  (-> (one-of/c 'where 'update) any/c)
+  (-> (one-of/c 'where 'update 'join) any/c)
   (λ (type-map [updatable null])
     (define (parse-cond cop e1 e2)
       (let ([type1 (get-type e1)]
@@ -60,11 +61,15 @@
               [(where) (cond cop e1 e2)]
               [(update)
                (if (eq? cop '=)
-                 (if (and (atom? e1) (atom-is-id? e1) (member (atom-val e1) updatable))                    
-                     (cond cop e1 e2)
-                     (error 'parser
-                            "lhs ~a of assignment in update does not refer to updatable column" e1))
-                 (error 'parser "illegal comparison ~a in update" cop))])
+                   (if (and (atom? e1) (atom-is-id? e1) (member (atom-val e1) updatable))                    
+                       (cond cop e1 e2)
+                       (error 'parser
+                              "lhs ~a of assignment in update does not refer to updatable column" e1))
+                   (error 'parser "illegal comparison ~a in update" cop))]
+              [(join)
+               (if (eq? cop '=)
+                   (cond cop e1 e2)
+                   (error 'parser "illegal comparison ~a in join" cop))])
             (error 'parser
                    "type error comparing ~a to ~a" type1 type2))))
     (define (parse-binop op e1 e2)
@@ -95,15 +100,15 @@
         [(exp COMP exp) (parse-cond $2 $1 $3)])
       (clause
        [(cond) $1]
-       [(clause COMMA clause) (if (eq? p-type 'where)
+       [(clause COMMA clause) (if (not (eq? p-type 'update))
                                   (error 'parser
                                          "illegal token , for parser type where")
                                   (clause 'COMMA $1 $3))]
-       [(clause AND clause) (if (eq? p-type 'where)
+       [(clause AND clause) (if (not (eq? p-type 'update))
                                 (clause 'AND $1 $3)
                                 (error 'parser
                                        "illegal token and for parser type ~a" p-type))]
-       [(clause OR clause) (if (eq? p-type 'where)
+       [(clause OR clause) (if (not (eq? p-type 'update))
                                (clause 'OR $1 $3)
                                (error 'parser
                                       "illegal token or for parser type ~a" p-type))])   
@@ -187,6 +192,7 @@
               [parser (case clause-type
                         [(where) where-parser]
                         [(update) update-parser]
+                        [(join) join-parser]
                         [else (error 'parse-clause "unsupported clause type ~a" clause-type)])])
           (begin0
             (ast clause-type ((apply parser p-args) (lexer-thunk oip)))
@@ -194,11 +200,14 @@
 
 (define where-parser (build-parser 'where))
 (define update-parser (build-parser 'update))
+(define join-parser (build-parser 'join))
 
-(define (parse-update str type-map updatable)
-  (parse-clause str 'update (list type-map updatable)))
 (define (parse-where str type-map)
   (parse-clause str 'where (list type-map)))
+(define (parse-update str type-map updatable)
+  (parse-clause str 'update (list type-map updatable)))
+(define (parse-join str type-map)
+  (parse-clause str 'join (list type-map)))
 
 (define empty-where
   (ast 'where null))
@@ -222,7 +231,7 @@
                                   row (update-fun row)))])
     (map row-fun rows)))
 
-; (define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
+(define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
 ; (define updatable (list "col1"))
 ; (define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
 ; (define w (parse-where "col1 < col2" tm))

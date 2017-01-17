@@ -14,22 +14,30 @@
 (provide (struct-out clause))
 (provide (struct-out ast))
 
-(struct column (cid name type notnull default primary-key) #:transparent)
-(struct table (name type-map colnames columns) #:transparent)
-(struct join-table (join-q views) #:transparent)
-(struct view (connection connection-type table colnames where-q updatable insertable deletable) #:transparent)
+(struct conn-info (filename type))
+(struct column (cid name type notnull default primary-key))
+(struct table (name type-map colnames columns))
+(struct join-table (join-q type-map colnames views names))
+(struct view (conn-info table colnames where-q updatable insertable deletable))
 
-(struct conn-info (filename type) #:transparent)
-(struct column (cid name type notnull default primary-key) #:transparent)
-(struct table (name type-map colnames columns) #:transparent)
-(struct join-table (join-q type-map colnames baseviews) #:transparent)
-(struct view (conn-info table colnames where-q updatable insertable deletable) #:transparent)
+(struct atom (type is-id? val))
+(struct exp (op type e1 e2))
+(struct cond (cop e1 e2))
+(struct clause (connector c1 c2))
+(struct ast (clause-type root))
 
-(struct atom (type is-id? val) #:transparent)
-(struct exp (op type e1 e2) #:transparent)
-(struct cond (cop e1 e2) #:transparent)
-(struct clause (connector c1 c2) #:transparent)
-(struct ast (clause-type root) #:transparent)
+; View utilties
+(define (view-get-type-map v)
+  (let ([t (view-table v)])
+    (if (table? t)
+        (table-type-map t)
+        (join-table-type-map t))))
+
+(define (view-get-colnames v)
+  (let ([t (view-table v)])
+    (if (table? t)
+        (table-colnames t)
+        (join-table-colnames t))))
 
 ; Parse utilities
 (define/contract (ast-to-string ast)
@@ -77,19 +85,32 @@
     (case ctype
       [(sqlite3) (let ([where-q (ast-to-string (view-where-q v))])
                    (if (non-empty-string? where-q)
-                       (format "where ~a" where-q)
+                       (format " where ~a" where-q)
                        ""))]
       [else (connection-type-error ctype)])))
 
 (define/contract (query-string v)
   (-> view? string?)
+  (define (sqlite3-table-string t)
+    (if (table? t)
+        (table-name t)
+        (let* ([colnames (string-join (join-table-colnames t) ",")]
+               [viewqs (map (λ (v) (sqlite3-query-string v)) (join-table-views t))]
+               [subqs (for/lists (l1)
+                        ([view (viewqs)]
+                         [name (join-table-names t)])
+                        (format "(~a) ~a" view name))]
+               [from-q (string-join subqs ",")]
+               [join-q (ast-to-string (join-table-join-q t))])
+          (format "select ~a from ~a where ~a" colnames from-q join-q))))
+  (define (sqlite3-query-string v)
+    (let ([colnames (string-join (view-colnames v) ",")]
+          [table-string (sqlite3-table-string (view-table v))]
+          [where-q (where-clause-string v)])
+      (format "select ~a from (~a)~a" colnames table-string where-q)))
   (let ([ctype (conn-info-type (view-conn-info v))])
     (case ctype
-      [(sqlite3)
-       (let ([colnames (string-join (view-colnames v) ",")]
-             [tablename (table-name (view-table v))]
-             [where-q (where-clause-string v)])
-         (format "select ~a from ~a ~a" colnames tablename where-q))]
+      [(sqlite3) (sqlite3-query-string v)]
       [else (connection-type-error ctype)])))
   
 (define/contract (delete-query-string v)

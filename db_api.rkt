@@ -28,19 +28,37 @@
 (define/contract (select v cols)
   (-> view? string? view?)
   (let* ([cols (map string-trim (string-split cols ","))]
-        [cols-unique? (list-unique? cols)]
-        [cols-simple? (subset? cols (view-colnames v))]
-        [valid-defaults? (andmap (λ (c) (valid-default v c))
-                                 (set-subtract (view-colnames v) cols))])
+         [insertable (if (view-insertable v)
+                         (let* ([cols-unique? (list-unique? cols)]
+                                [cols-simple? (subset? cols (view-colnames v))]
+                                [valid-defaults? (andmap (λ (c) (valid-default v c))
+                                                         (set-subtract (view-colnames v) cols))])
+                           (and cols-unique? cols-simple? valid-defaults?))
+                         #f)])
     (struct-copy view v
                  [colnames cols]
                  [updatable (set-intersect (view-colnames v) cols)]
-                 [insertable (and cols-unique? cols-simple? valid-defaults?)])))
+                 [insertable insertable])))
 
 (define/contract (where v cond)
   (-> view? string? view?)
-  (let* ([new-q (restrict-where (view-where-q v) cond (table-type-map (view-table v)))])
+  (let* ([new-q (restrict-where (view-where-q v) cond (view-get-type-map v))])
     (struct-copy view v [where-q new-q])))
+
+(define/contract (join v1 v2 jcond [prefix (list "left" "right")])
+  (->* (view? view? string?)
+       ((and/c list (λ (p) (eq? 2 (length p))) (λ (p) (not (eq? (car p) (cdr p))))))
+       view?)
+  (let* ([cinfo (view-conn-info v1)]
+         [tm1 (view-get-type-map v1)]
+         [tm2 (view-get-type-map v2)]
+         [type-map (begin
+                     (hash-for-each tm2 (λ (k v) (hash-set! tm1 k v)))
+                     tm1)]
+         [join-q (parse-join jcond type-map)]
+         [colnames (append (view-get-colnames v1) (view-get-colnames v2))]
+         [jtable (join-table join-q type-map colnames (list v1 v2) prefix)])
+    (view cinfo jtable colnames empty-where null #f #f)))
 
 (define/contract (fetch v)
   (-> view? any)
@@ -94,4 +112,5 @@
                         (view-conn-info v)
                         (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
                    
-(define v (create-view "test.db" "students"))
+(define v1 (create-view "test.db" "students"))
+(define v2 (create-view "test.db" "test"))
