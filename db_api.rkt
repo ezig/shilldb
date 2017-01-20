@@ -45,11 +45,10 @@
   (let* ([new-q (restrict-where (view-where-q v) cond (view-get-type-map v))])
     (struct-copy view v [where-q new-q])))
 
-; parse join as a normal where cluase
 (define/contract (join v1 v2 jcond [prefix (list "lhs" "rhs")])
   (->* (view? view? string?)
        ((and/c list (λ (p) (eq? 2 (length p))) (λ (p) (not (eq? (car p) (cdr p))))))
-       any)
+       view?)
   (let* ([cinfo (view-conn-info v1)]
          [tm1 (view-get-type-map v1)]
          [tm2 (view-get-type-map v2)]
