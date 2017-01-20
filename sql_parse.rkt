@@ -1,7 +1,6 @@
 #lang racket
 
 (provide parse-where)
-(provide parse-join)
 (provide restrict-where)
 (provide empty-where)
 (provide where-to-fun)
@@ -23,7 +22,7 @@
 (define-lex-abbrevs
   [letter (:or (:/ "a" "z") (:/ #\A #\Z) )]
   [digit (:/ #\0 #\9)]
-  [identifier (:: (:or letter #\_) (:* (:or letter digit #\_)))])                                     
+  [identifier (:: (:or letter #\_) (:* (:or letter digit #\_)))])
 
 (define sql-lexer
   (lexer-src-pos
@@ -51,7 +50,7 @@
           (atom-type e)))
 
 (define/contract (build-parser p-type)
-  (-> (one-of/c 'where 'update 'join) any/c)
+  (-> (one-of/c 'where 'update) any/c)
   (λ (type-map [updatable null])
     (define (parse-cond cop e1 e2)
       (let ([type1 (get-type e1)]
@@ -65,11 +64,7 @@
                        (cond cop e1 e2)
                        (error 'parser
                               "lhs ~a of assignment in update does not refer to updatable column" e1))
-                   (error 'parser "illegal comparison ~a in update" cop))]
-              [(join)
-               (if (eq? cop '=)
-                   (cond cop e1 e2)
-                   (error 'parser "illegal comparison ~a in join" cop))])
+                   (error 'parser "illegal comparison ~a in update" cop))])
             (error 'parser
                    "type error comparing ~a to ~a" type1 type2))))
     (define (parse-binop op e1 e2)
@@ -192,7 +187,6 @@
               [parser (case clause-type
                         [(where) where-parser]
                         [(update) update-parser]
-                        [(join) join-parser]
                         [else (error 'parse-clause "unsupported clause type ~a" clause-type)])])
           (begin0
             (ast clause-type ((apply parser p-args) (lexer-thunk oip)))
@@ -200,14 +194,11 @@
 
 (define where-parser (build-parser 'where))
 (define update-parser (build-parser 'update))
-(define join-parser (build-parser 'join))
 
 (define (parse-where str type-map)
   (parse-clause str 'where (list type-map)))
 (define (parse-update str type-map updatable)
   (parse-clause str 'update (list type-map updatable)))
-(define (parse-join str type-map)
-  (parse-clause str 'join (list type-map)))
 
 (define empty-where
   (ast 'where null))

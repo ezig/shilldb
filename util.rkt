@@ -17,7 +17,7 @@
 (struct conn-info (filename type))
 (struct column (cid name type notnull default primary-key))
 (struct table (name type-map colnames columns))
-(struct join-table (join-q type-map colnames views names))
+(struct join-table (type-map colnames views prefixes))
 (struct view (conn-info table colnames where-q updatable insertable deletable))
 
 (struct atom (type is-id? val))
@@ -95,18 +95,20 @@
     (if (table? t)
         (table-name t)
         (let* ([colnames (string-join (join-table-colnames t) ",")]
-               [viewqs (map (λ (v) (sqlite3-query-string v)) (join-table-views t))]
+               [views (join-table-views t)]
                [subqs (for/lists (l1)
-                        ([view (viewqs)]
-                         [name (join-table-names t)])
-                        (format "(~a) ~a" view name))]
-               [from-q (string-join subqs ",")]
-               [join-q (ast-to-string (join-table-join-q t))])
-          (format "select ~a from ~a where ~a" colnames from-q join-q))))
-  (define (sqlite3-query-string v)
-    (let ([colnames (string-join (view-colnames v) ",")]
-          [table-string (sqlite3-table-string (view-table v))]
-          [where-q (where-clause-string v)])
+                        ([view views]
+                         [name (join-table-prefixes t)])
+                        (format "(~a)" (sqlite3-query-string view name)))])
+               (string-join subqs ","))))
+  (define (sqlite3-query-string v [col-prefix null])
+    (let* ([colnames (view-colnames v)]
+           [colnames (if (null? col-prefix)
+                         colnames
+                         (map (λ (c) (format "~a as ~a_~a" c col-prefix c)) colnames))]
+           [colnames (string-join colnames ",")]
+           [table-string (sqlite3-table-string (view-table v))]
+           [where-q (where-clause-string v)])
       (format "select ~a from (~a)~a" colnames table-string where-q)))
   (let ([ctype (conn-info-type (view-conn-info v))])
     (case ctype

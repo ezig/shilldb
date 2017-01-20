@@ -45,20 +45,26 @@
   (let* ([new-q (restrict-where (view-where-q v) cond (view-get-type-map v))])
     (struct-copy view v [where-q new-q])))
 
-(define/contract (join v1 v2 jcond [prefix (list "left" "right")])
+; parse join as a normal where cluase
+(define/contract (join v1 v2 jcond [prefix (list "lhs" "rhs")])
   (->* (view? view? string?)
        ((and/c list (λ (p) (eq? 2 (length p))) (λ (p) (not (eq? (car p) (cdr p))))))
-       view?)
+       any)
   (let* ([cinfo (view-conn-info v1)]
          [tm1 (view-get-type-map v1)]
          [tm2 (view-get-type-map v2)]
-         [type-map (begin
-                     (hash-for-each tm2 (λ (k v) (hash-set! tm1 k v)))
-                     tm1)]
-         [join-q (parse-join jcond type-map)]
-         [colnames (append (view-get-colnames v1) (view-get-colnames v2))]
-         [jtable (join-table join-q type-map colnames (list v1 v2) prefix)])
-    (view cinfo jtable colnames empty-where null #f #f)))
+         [type-map (make-hash)])
+    (begin
+      (hash-for-each tm1 (λ (k v)
+                           (hash-set! type-map (format "~a_~a" (first prefix) k) v)))
+      (hash-for-each tm2 (λ (k v)
+                           (hash-set! type-map (format "~a_~a" (second prefix) k) v)))
+      (let* ([join-q (parse-where jcond type-map)]
+             [v1-colnames (map (λ (c) (format "~a_~a" (first prefix) c)) (view-get-colnames v1))]
+             [v2-colnames (map (λ (c) (format "~a_~a" (second prefix) c)) (view-get-colnames v2))]
+             [colnames (append v1-colnames v2-colnames)]
+             [jtable (join-table type-map colnames (list v1 v2) prefix)])
+        (view cinfo jtable colnames join-q null #f #f)))))
 
 (define/contract (fetch v)
   (-> view? any)
@@ -112,5 +118,7 @@
                         (view-conn-info v)
                         (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
                    
-(define v1 (create-view "test.db" "students"))
-(define v2 (create-view "test.db" "test"))
+(define v1 (create-view "test.db" "v1"))
+(define v2 (create-view "test.db" "v2"))
+(define v3 (create-view "test.db" "v3"))
+(define v4 (create-view "test.db" "v4"))
