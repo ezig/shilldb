@@ -33,6 +33,11 @@
         (table-type-map t)
         (join-table-type-map t))))
 
+(define (table-replace-type-map t tm)
+  (if (table? t)
+      (struct-copy table t [type-map tm])
+      (struct-copy join-table t [type-map tm])))
+
 (define (view-get-colnames v)
   (let ([t (view-table v)])
     (if (table? t)
@@ -47,7 +52,7 @@
       [(clause connector c1 c2)
        (if (eq? (ast-clause-type ast) 'where)
            (format "(~a) ~a (~a)" (aux c1) connector (aux c2))
-           (format "~a ~a ~a" (aux c1) connector (aux c2)))]
+           (format "~a, ~a" (aux c1) (aux c2)))]
       [(cond cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
       [(exp op type e1 e2) (format "~a ~a ~a" (aux e1) op (aux e2))]
       [(atom type is-id? val)

@@ -27,7 +27,8 @@
 ; check if columns are within the views as a contract 
 (define/contract (select v cols)
   (-> view? string? view?)
-  (let* ([cols (map string-trim (string-split cols ","))]
+  (let* ([tm (validate-select cols (view-get-type-map v))]
+         [cols (map string-trim (string-split cols ","))]
          [insertable (if (view-insertable v)
                          (let* ([cols-unique? (list-unique? cols)]
                                 [cols-simple? (subset? cols (view-colnames v))]
@@ -37,6 +38,7 @@
                          #f)])
     (struct-copy view v
                  [colnames cols]
+                 [table (table-replace-type-map (view-table v) tm)]
                  [updatable (set-intersect (view-colnames v) cols)]
                  [insertable insertable])))
 
@@ -116,7 +118,8 @@
                        (connect-and-exec
                         (view-conn-info v)
                         (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
-                   
+
+(define v (create-view "test.db" "test"))
 (define v1 (create-view "test.db" "v1"))
 (define v2 (create-view "test.db" "v2"))
 (define v3 (create-view "test.db" "v3"))

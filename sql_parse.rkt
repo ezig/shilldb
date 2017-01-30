@@ -4,6 +4,7 @@
 (provide restrict-where)
 (provide empty-where)
 (provide where-to-fun)
+(provide validate-select)
 (provide apply-update)
 
 (require "util.rkt")
@@ -50,7 +51,7 @@
           (atom-type e)))
 
 (define/contract (build-parser p-type)
-  (-> (one-of/c 'where 'update) any/c)
+  (-> (one-of/c 'where 'update 'select) any/c)
   (λ (type-map [updatable null])
     (define (parse-cond cop e1 e2)
       (let ([type1 (get-type e1)]
@@ -58,6 +59,7 @@
         (if (eq? type1 type2)
             (case p-type
               [(where) (cond cop e1 e2)]
+              [(select) (cond cop e1 e2)]
               [(update)
                (if (eq? cop '=)
                    (if (and (atom? e1) (atom-is-id? e1) (member (atom-val e1) updatable))                    
@@ -95,15 +97,19 @@
         [(exp COMP exp) (parse-cond $2 $1 $3)])
       (clause
        [(cond) $1]
-       [(clause COMMA clause) (if (not (eq? p-type 'update))
+       [(exp) (if (eq? p-type 'select)
+                  $1
+                  (error 'parser
+                         "illegal clause without condition for parser type ~a" p-type))]
+       [(clause COMMA clause) (if (eq? p-type 'where)
                                   (error 'parser
                                          "illegal token , for parser type where")
                                   (clause 'COMMA $1 $3))]
-       [(clause AND clause) (if (not (eq? p-type 'update))
+       [(clause AND clause) (if (eq? p-type 'where)
                                 (clause 'AND $1 $3)
                                 (error 'parser
                                        "illegal token and for parser type ~a" p-type))]
-       [(clause OR clause) (if (not (eq? p-type 'update))
+       [(clause OR clause) (if (eq? p-type 'where)
                                (clause 'OR $1 $3)
                                (error 'parser
                                       "illegal token or for parser type ~a" p-type))])   
@@ -176,9 +182,26 @@
           [else (error 'ast-to-fun "invalid clause type ~a" (ast-clause-type ast))])
         (aux root))))
 
+(define/contract (select-to-type-map ast)
+  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'select))) hash?)
+  (define (aux t)
+    (match t
+      [(clause connector c1 c2) (append (aux c1) (aux c2))]
+      [(cond cop e1 e2) (list 'num)] ; comparison in select leads to bool column
+      [(exp op type e1 e2) (list type)]
+      [(atom type is-id? val) (list type)]))
+  (let* ([root (ast-root ast)]
+         [type-list (aux root)]
+         [colnames (map string-trim (string-split (ast-to-string ast) ","))])
+    (make-immutable-hash (zip colnames type-list))))
+
 (define (lexer-thunk port)
   (port-count-lines! port)
   (λ () (sql-lexer port)))
+
+(define where-parser (build-parser 'where))
+(define update-parser (build-parser 'update))
+(define select-parser (build-parser 'select))
 
 (define (parse-clause str clause-type p-args)
      (if (or (null? str) (not (non-empty-string? str)))
@@ -187,18 +210,18 @@
               [parser (case clause-type
                         [(where) where-parser]
                         [(update) update-parser]
+                        [(select) select-parser]
                         [else (error 'parse-clause "unsupported clause type ~a" clause-type)])])
           (begin0
             (ast clause-type ((apply parser p-args) (lexer-thunk oip)))
             (close-input-port oip)))))
 
-(define where-parser (build-parser 'where))
-(define update-parser (build-parser 'update))
-
 (define (parse-where str type-map)
   (parse-clause str 'where (list type-map)))
 (define (parse-update str type-map updatable)
   (parse-clause str 'update (list type-map updatable)))
+(define (parse-select str type-map)
+  (parse-clause str 'select (list type-map)))
 
 (define empty-where
   (ast 'where null))
@@ -221,6 +244,10 @@
          [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
                                   row (update-fun row)))])
     (map row-fun rows)))
+
+(define (validate-select str type-map)
+  (-> string? hash? hash?)
+  (select-to-type-map (parse-select str type-map)))
 
 (define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
 ; (define updatable (list "col1"))
