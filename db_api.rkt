@@ -1,10 +1,11 @@
 #lang racket
 
 (require db)
+(require shill/plugin)
 (require "sql_parse.rkt")
 (require "util.rkt")
 
-(define (create-view filename tablename)
+(define (make-view-impl filename tablename)
   (let* ([cinfo (conn-info filename 'sqlite3)]
          ; Fix string-append hack for tableinfo to avoid injection attacks
          [tableinfo (connect-and-exec
@@ -18,14 +19,9 @@
          [t (table tablename type-map column-names column-hash)])
     (view cinfo t column-names empty-where column-names #t #t)))
 
-(define (valid-default v colname)
-    (let* ([col (hash-ref (table-columns (view-table v)) colname)]
-          [default-value-null? (sql-null? (column-default col))]
-          [not-null? (equal? 1 (column-notnull col))])
-          (not (and not-null? default-value-null?))))
 
 ; check if columns are within the views as a contract 
-(define/contract (select v cols)
+(define/contract (select-impl v cols)
   (-> view? string? view?)
   (let* ([tm (validate-select cols (view-get-type-map v))]
          [cols (map string-trim (string-split cols ","))]
@@ -42,12 +38,12 @@
                  [updatable (set-intersect (view-colnames v) cols)]
                  [insertable insertable])))
 
-(define/contract (where v cond)
+(define/contract (where-impl v cond)
   (-> view? string? view?)
   (let* ([new-q (restrict-where (view-where-q v) cond (view-get-type-map v))])
     (struct-copy view v [where-q new-q])))
 
-(define/contract (join v1 v2 jcond [prefix (list "lhs" "rhs")])
+(define/contract (join-impl v1 v2 jcond [prefix (list "lhs" "rhs")])
   (->* (view? view? string?)
        ((and/c list (λ (p) (eq? 2 (length p))) (λ (p) (not (eq? (car p) (cdr p))))))
        view?)
@@ -67,24 +63,24 @@
              [jtable (join-table type-map colnames (list v1 v2) prefix)])
         (view cinfo jtable colnames join-q null #f #f)))))
 
-(define/contract (fetch v)
+(define/contract (fetch-impl v)
   (-> view? any)
   (connect-and-exec (view-conn-info v)
                     (λ (c) (query-rows c (query-string v)))))
 
-(define/contract (delete v)
+(define/contract (delete-impl v)
   (-> (and/c view? view-deletable) any/c)
   (connect-and-exec (view-conn-info v)
                     (λ (c) (query-exec c (delete-query-string v)))))
 
-(define/contract (update v set-query [where-cond ""])
+(define/contract (update-impl v set-query [where-cond ""])
   (->* ((and/c view? (λ (v) (not (null? (view-updatable v))))) string?)
        (string?)
        any/c)
   (let* ([new-v (if (non-empty-string? where-cond)
-                       (where v where-cond)
-                       v)]
-         [rows (fetch (struct-copy view new-v [colnames (list "*")]))]
+                    (where-impl v where-cond)
+                    v)]
+         [rows (fetch-impl (struct-copy view new-v [colnames (list "*")]))]
          [colnames (table-colnames (view-table v))]
          [row-hts (map make-immutable-hash (map (λ (r) (zip colnames (vector->list r))) rows))]
          [type-map (table-type-map (view-table v))]
@@ -96,7 +92,7 @@
 
 ; values as values not as strings
 ; data/collections collections lib
-(define/contract (insert v cols values)
+(define/contract (insert-impl v cols values)
   (-> (and/c view? view-insertable) string? list? any/c)
   (let* ([cols (map string-trim (string-split cols ","))]
          [valid-cols? (subset? cols (view-colnames v))]
@@ -119,8 +115,54 @@
                         (view-conn-info v)
                         (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
 
-(define v (create-view "test.db" "test"))
-(define v1 (create-view "test.db" "v1"))
-(define v2 (create-view "test.db" "v2"))
-(define v3 (create-view "test.db" "v3"))
-(define v4 (create-view "test.db" "v4"))
+(interface view-iface (get-struct where select join fetch update delete insert))
+(capability
+ view-impl view-iface (v)
+ ; Constructors
+ ; This would actually be used by users to create a simple view out of a database table
+ (define/ctor (make-view filename tablename)
+   (make-view-impl filename tablename))
+ ; This constructor is used for methods like where that want to return a new
+ ; view capability based on the view struct returned by where-impl, select-impl, or join-impl.
+ ; We don't really want users of the capability to use this constructor
+ ; because they might pass in a garbage view struct.
+ (define/ctor (view-from-struct v-struct)
+   v-struct)
+
+ ; Needed by join method to the underlying struct from the other view capability
+ (define/op (get-struct)
+   (view-impl-v this))
+
+ ; Methods that return new view capabilities
+ (define/op (where cond)
+   (view-from-struct (where-impl (view-impl-v this) cond)))
+ (define/op (select cols)
+   (view-from-struct (select-impl (view-impl-v this) cols)))
+ (define/op (join v2 jcond)
+   (view-from-struct (join-impl (view-impl-v this) (get-struct v2) jcond)))
+
+ ; Methods that actually execute SQL queries
+ (define/op (fetch)
+   (fetch-impl (view-impl-v this)))
+ (define/op (update set-query)
+   (update-impl (view-impl-v this) set-query))
+ (define/op (delete)
+   (delete-impl (view-impl-v this)))
+ (define/op (insert cols vals)
+   (insert-impl (view-impl-v this) cols vals)))
+
+
+(define v (make-view "test.db" "test"))
+(define v1 (make-view "test.db" "v1"))
+(define j (join v v1 "lhs_b = rhs_l"))
+
+(fetch (where (select j "lhs_a") "lhs_a <= 3"))
+
+;(define v2 (create-view "test.db" "v2"))
+;(define v3 (create-view "test.db" "v3"))
+;(define v4 (create-view "test.db" "v4"))
+
+; todo: figure out how to do this
+;(define/contract testv
+;  (view-iface/c (where/p #:derive fetch/p))
+;  v)

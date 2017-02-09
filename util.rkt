@@ -27,6 +27,12 @@
 (struct ast (clause-type root))
 
 ; View utilties
+(define (valid-default v colname)
+    (let* ([col (hash-ref (table-columns (view-table v)) colname)]
+          [default-value-null? (sql-null? (column-default col))]
+          [not-null? (equal? 1 (column-notnull col))])
+          (not (and not-null? default-value-null?))))
+
 (define (view-get-type-map v)
   (let ([t (view-table v)])
     (if (table? t)
