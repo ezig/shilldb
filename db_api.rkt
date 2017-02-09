@@ -1,5 +1,8 @@
 #lang racket
 
+(provide (rename-out [make-view make-dbview])
+         (interface-out dbview))
+
 (require db)
 (require shill/plugin)
 (require "sql_parse.rkt")
@@ -115,9 +118,9 @@
                         (view-conn-info v)
                         (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
 
-(interface view-iface (get-struct where select join fetch update delete insert))
+(interface dbview (where select join fetch update delete insert))
 (capability
- view-impl view-iface (v)
+ view-impl dbview (v)
  ; Constructors
  ; This would actually be used by users to create a simple view out of a database table
  (define/ctor (make-view filename tablename)
@@ -129,17 +132,13 @@
  (define/ctor (view-from-struct v-struct)
    v-struct)
 
- ; Needed by join method to the underlying struct from the other view capability
- (define/op (get-struct)
-   (view-impl-v this))
-
  ; Methods that return new view capabilities
  (define/op (where cond)
    (view-from-struct (where-impl (view-impl-v this) cond)))
  (define/op (select cols)
    (view-from-struct (select-impl (view-impl-v this) cols)))
  (define/op (join v2 jcond)
-   (view-from-struct (join-impl (view-impl-v this) (get-struct v2) jcond)))
+   (view-from-struct (join-impl (view-impl-v this) (view-impl-v v2) jcond)))
 
  ; Methods that actually execute SQL queries
  (define/op (fetch)
@@ -151,12 +150,12 @@
  (define/op (insert cols vals)
    (insert-impl (view-impl-v this) cols vals)))
 
+(module+ test
+  (define v (make-view "test.db" "test"))
+  (define v1 (make-view "test.db" "v1"))
+  (define j (join v v1 "lhs_b = rhs_l"))
 
-(define v (make-view "test.db" "test"))
-(define v1 (make-view "test.db" "v1"))
-(define j (join v v1 "lhs_b = rhs_l"))
-
-(fetch (where (select j "lhs_a") "lhs_a <= 3"))
+  (fetch (where (select j "lhs_a") "lhs_a <= 3")))
 
 ;(define v2 (create-view "test.db" "v2"))
 ;(define v3 (create-view "test.db" "v3"))
