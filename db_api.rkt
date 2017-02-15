@@ -1,6 +1,6 @@
 #lang racket
 
-(provide (rename-out [make-view make-dbview])
+(provide make-dbview
          (interface-out dbview))
 
 (require db)
@@ -120,39 +120,39 @@
 
 (interface dbview (where select join fetch update delete insert))
 (capability
- view-impl dbview (v)
+ dbview-impl dbview (v)
  ; Constructors
  ; This would actually be used by users to create a simple view out of a database table
- (define/ctor (make-view filename tablename)
+ (define/ctor (make-dbview filename tablename)
    (make-view-impl filename tablename))
  ; This constructor is used for methods like where that want to return a new
  ; view capability based on the view struct returned by where-impl, select-impl, or join-impl.
  ; We don't really want users of the capability to use this constructor
  ; because they might pass in a garbage view struct.
- (define/ctor (view-from-struct v-struct)
+ (define/ctor (dbview-from-struct v-struct)
    v-struct)
 
  ; Methods that return new view capabilities
  (define/op (where cond)
-   (view-from-struct (where-impl (view-impl-v this) cond)))
+   (dbview-from-struct (where-impl (dbview-impl-v this) cond)))
  (define/op (select cols)
-   (view-from-struct (select-impl (view-impl-v this) cols)))
+   (dbview-from-struct (select-impl (dbview-impl-v this) cols)))
  (define/op (join v2 jcond)
-   (view-from-struct (join-impl (view-impl-v this) (view-impl-v v2) jcond)))
+   (dbview-from-struct (join-impl (dbview-impl-v this) (dbview-impl-v v2) jcond)))
 
  ; Methods that actually execute SQL queries
  (define/op (fetch)
-   (fetch-impl (view-impl-v this)))
+   (fetch-impl (dbview-impl-v this)))
  (define/op (update set-query)
-   (update-impl (view-impl-v this) set-query))
+   (update-impl (dbview-impl-v this) set-query))
  (define/op (delete)
-   (delete-impl (view-impl-v this)))
+   (delete-impl (dbview-impl-v this)))
  (define/op (insert cols vals)
-   (insert-impl (view-impl-v this) cols vals)))
+   (insert-impl (dbview-impl-v this) cols vals)))
 
 (module+ test
-  (define v (make-view "test.db" "test"))
-  (define v1 (make-view "test.db" "v1"))
+  (define v (make-dbview "test.db" "test"))
+  (define v1 (make-dbview "test.db" "v1"))
   (define j (join v v1 "lhs_b = rhs_l"))
 
   (fetch (where (select j "lhs_a") "lhs_a <= 3")))
