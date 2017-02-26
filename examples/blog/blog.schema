@@ -1,0 +1,21 @@
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE posts (userid INTEGER DEFAULT 0 NOT NULL, title TEXT, post TEXT);
+
+INSERT INTO users VALUES (0, "Ezra");
+INSERT INTO users VALUES (1, "Bob");
+INSERT INTO users VALUES (2, "Haskell");
+
+INSERT INTO posts VALUES (0, "Shill pt. 1",
+	"The Principle of Least Privilege says that software shouldn't be executed with more authority than it needs to get its job done.");
+INSERT INTO posts VALUES (0, "Shill pt. 2",
+	"Shill is a shell scripting language designed to make it easy to follow the Principle of Least Privilege");
+
+INSERT INTO posts VALUES (1, "Try OCaml!",
+ "OCaml is an industrial strength programming language supporting functional, imperative and object-oriented styles");
+
+INSERT INTO posts VALUES (2, "Monads",
+ "In functional programming, monads are a way to build computer programs by joining simple components in robust ways.");
+INSERT INTO posts VALUES (2, "Type Inference",
+ "Haskell has a strong, static type system based on Hindley–Milner type inference.");
+INSERT INTO posts VALUES (2, "Polymorphism", 
+	"In programming languages and type theory, polymorphism is the provision of a single interface to entities of different types.");

@@ -1,0 +1,65 @@
+#! shill
+
+; A simple database-backed blog application. 
+; Users can view their own posts and make new posts, but no user should be able
+; to view/modify another user's posts.
+;
+; Usage example from shill prompt: 
+; > (import (plugin db))
+; > (define uv (make-dbview "blog.db" "users"))
+; > (define pv (make-dbview "blog.db" "posts"))
+; 
+; Display all of Bob's posts
+; > (main uv pv "Bob" "list")
+;
+; Make a new post as Bob
+; > (main uv pv "Bob" "post" (list "Hello!" "Welcome to my blog."))
+;
+; Make a post as Bob using a buggy SQL query (this will fail):
+; > (main uv pv "Bob" "buggy_post" (list "Hello!" "Welcome to my blog."))
+
+(import (plugin db))
+
+(export blogview/c)
+;(export (contract-out [main (-> blogview/c blogview/c string? string? any/c)]))
+(export main)
+
+(define blogview/c (dbview/c (fetch/p) (join/p) (where/p) (select/p)))
+
+; Given a view which should correspond to a single user's view into the posts
+; database, list out all of the posts that user can view in a readable form.
+(define (list_posts post_v)
+	(for ([post (fetch post_v)])
+		(displayln 
+			(format "~a:\n---\n~a\n\n\n" (hash-ref post "title") (hash-ref post "post")))))
+
+; Insert a new post in the posts table.
+; `post_v` should be a view with constraints representing which user is currently
+; logged in. See the comment for `buggy_make_post` below for why this is important.
+(define (make_post post_v postargs)
+	(insert post_v "userid, title, post" postargs))
+
+; In blog.schema, the default userid of a post is specified as 0.
+; This function demonstrates a simple coding mistake where a client forgets to
+; specify the userid when inserting into the database, causing the post to
+; default to being posted by user 0.
+; However, because of the userid contraint on the view passed into buggy_make_post
+; the call to insert will fail unless the logged-in user is actually user 0.
+(define (buggy_make_post post_v postargs)
+	(insert post_v "title, post" postargs))
+
+(define (main user_v blog_v username action [postargs null])
+	; Check if the username is valid based on whether or not the provided
+	; name appears exatly once in the users table
+	(let ([userlookup (fetch (where user_v (format "name = '~a'" username)))])
+		(if (not (= 1 (length userlookup)))
+				(error 'main "unknown username ~a" username)
+				; Create a restricted view of the posts table based on the id of the
+				; user who just logged in
+				(let* ([userid (hash-ref (first userlookup) "id")]
+							 [post_v (where blog_v (format "userid = ~a" userid))])
+					(case action
+						[("list") (list_posts post_v)]
+						[("post") (make_post post_v (cons userid postargs))]
+						[("buggy_post") (buggy_make_post post_v postargs)]
+						[else (error 'main "unknown action ~a" action)])))))
