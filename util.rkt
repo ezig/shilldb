@@ -85,9 +85,10 @@
 (define (type-to-sym connection-type type)
   (case connection-type
     [(sqlite3)
-     (if (or (string=? type "text") (string-contains? type "char"))
-         'str
-         'num)]
+     (let ([type-lower (string-downcase type)])
+       (if (or (string=? type-lower "text") (string-contains? type-lower "char"))
+           'str
+           'num))]
     [else (connection-type-error connection-type)]))
 
 (define/contract (where-clause-string v)
