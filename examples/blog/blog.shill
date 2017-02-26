@@ -24,7 +24,7 @@
 ;(export (contract-out [main (-> blogview/c blogview/c string? string? any/c)]))
 (export main)
 
-(define blogview/c (dbview/c (fetch/p) (join/p) (where/p) (select/p)))
+(define blogview/c (dbview/c (fetch/p) (where/p)))
 
 ; Given a view which should correspond to a single user's view into the posts
 ; database, list out all of the posts that user can view in a readable form.
