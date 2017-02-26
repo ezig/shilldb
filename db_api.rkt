@@ -68,8 +68,9 @@
 
 (define/contract (fetch-impl v)
   (-> view? any)
-  (connect-and-exec (view-conn-info v)
-                    (λ (c) (query-rows c (query-string v)))))
+  (map (λ (r) (make-hash (zip (view-colnames v) r)))
+  (map vector->list (connect-and-exec (view-conn-info v)
+                                      (λ (c) (query-rows c (query-string v)))))))
 
 (define/contract (delete-impl v)
   (-> (and/c view? view-deletable) any/c)
