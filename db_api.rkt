@@ -14,7 +14,12 @@
          [tableinfo (connect-and-exec
                      cinfo
                      (λ (c) (query-rows c (string-append "PRAGMA table_info(" tablename ")"))))]
-         [columns (map (λ (col) (apply column (vector->list col))) tableinfo)]
+         [columns (begin (for ([col tableinfo]
+                               #:when (and (eq? 'num (type-to-sym 'sqlite3 (vector-ref col 2)))
+                                           (not (sql-null? (vector-ref col 4)))))
+                               (let ([new-default (string->number (vector-ref col 4))])
+                                 (vector-set! col 4 new-default)))
+                         (map (λ (col) (apply column (vector->list col))) tableinfo))]                                                                        
          [column-hash (make-hash (map (λ (col) (cons (column-name col) col)) columns))]
          [type-map (make-hash (map (λ (col) (cons (column-name col)
                                        (type-to-sym 'sqlite3 (column-type col)))) columns))]
@@ -162,7 +167,4 @@
 ;(define v3 (create-view "test.db" "v3"))
 ;(define v4 (create-view "test.db" "v4"))
 
-; todo: figure out how to do this
-;(define/contract testv
-;  (view-iface/c (where/p #:derive fetch/p))
-;  v)
+;(define v (make-dbview "test.db" "students"))
