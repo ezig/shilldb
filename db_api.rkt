@@ -158,10 +158,12 @@
 
 (module+ test
   (define v (make-dbview "test.db" "test"))
-  (define v1 (make-dbview "test.db" "v1"))
-  (define j (join v v1 "lhs_b = rhs_l"))
-
-  (fetch (where (select j "lhs_a") "lhs_a <= 3")))
+  (define/contract v/f
+    (dbview/c (fetch/p)) v)
+  (fetch v/f))
+  ; (define v1 (make-dbview "test.db" "v1"))
+  ; (define j (join v v1 "lhs_b = rhs_l"))
+  ; (fetch (where (select j "lhs_a") "lhs_a <= 3")))
 
 ;(define v2 (create-view "test.db" "v2"))
 ;(define v3 (create-view "test.db" "v3"))
