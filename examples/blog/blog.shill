@@ -6,8 +6,8 @@
 ;
 ; Usage example from shill prompt: 
 ; > (import (plugin db))
-; > (define uv (make-dbview "blog.db" "users"))
-; > (define pv (make-dbview "blog.db" "posts"))
+; > (define/contract uv blogview/c (make-dbview "blog.db" "users"))
+; > (define/contract pv blogview/c (make-dbview "blog.db" "posts"))
 ; 
 ; Display all of Bob's posts
 ; > (main uv pv "Bob" "list")
@@ -21,7 +21,7 @@
 (import (plugin db))
 
 (export blogview/c)
-;(export (contract-out [main (-> blogview/c blogview/c string? string? any/c)]))
+; (export (contract-out [main (-> blogview/c blogview/c string? string? any/c)]))
 (export main)
 
 (define blogview/c (dbview/c (fetch/p) (where/p)))
