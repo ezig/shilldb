@@ -2,6 +2,7 @@
 
 (provide make-dbview
          (interface-out dbview))
+(provide print-fetch-res)
 
 (require db)
 (require shill/plugin)
@@ -73,9 +74,9 @@
 
 (define/contract (fetch-impl v)
   (-> view? any)
-  (map (λ (r) (make-hash (zip (view-colnames v) r)))
-  (map vector->list (connect-and-exec (view-conn-info v)
-                                      (λ (c) (query-rows c (query-string v)))))))
+  (cons (view-colnames v)
+    (map vector->list (connect-and-exec (view-conn-info v)
+                                        (λ (c) (query-rows c (query-string v)))))))
 
 (define/contract (delete-impl v)
   (-> (and/c view? view-deletable) any/c)
@@ -91,7 +92,7 @@
                     v)]
          [rows (fetch-impl (struct-copy view new-v [colnames (list "*")]))]
          [colnames (table-colnames (view-table v))]
-         [row-hts (map make-immutable-hash (map (λ (r) (zip colnames (vector->list r))) rows))]
+         [row-hts (map make-immutable-hash (map (λ (r) (zip colnames r)) (cdr rows)))]
          [type-map (table-type-map (view-table v))]
          [new-rows (apply-update set-query row-hts (view-updatable v) type-map)])
     (if (andmap (where-to-fun (view-where-q v)) new-rows)

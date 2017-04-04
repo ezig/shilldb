@@ -178,3 +178,11 @@
   (if (<= (length l) 1)
       #t
       (helper l (list))))
+
+; Printing utilities
+(define (print-fetch-res fr)
+  (begin
+    (displayln (string-join (car fr) ", "))
+    (displayln "-----")
+    (for ([row (cdr fr)])
+        (displayln (string-join (map ~a row) ", ")))))
