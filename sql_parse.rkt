@@ -161,8 +161,8 @@
     (match t
       [(clause connector c1 c2)
        (case connector
-         [(AND) (and (aux c1) (aux c2))]
-         [(OR) (or (aux c1) (aux c2))]
+         [(AND) (λ (r) (and ((aux c1) r) ((aux c2) r)))]
+         [(OR) (λ (r) (or ((aux c1) r) ((aux c2) r)))]
          [(COMMA) (λ (r) (append ((aux c1) r) ((aux c2) r)))]
          [else (error 'ast-to-fun "invalid connector ~a" connector)])]
       [(cond cop e1 e2)
@@ -249,7 +249,7 @@
   (-> string? hash? hash?)
   (select-to-type-map (parse-select str type-map)))
 
-(define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
+; (define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
 ; (define updatable (list "col1"))
 ; (define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
 ; (define w (parse-where "col1 < col2" tm))
