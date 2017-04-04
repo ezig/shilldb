@@ -1,0 +1,10 @@
+CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department INTEGER);
+CREATE TABLE salaries (empid INTEGER, salary INTEGER);
+
+INSERT INTO employees VALUES (0, "Ezra", 0);
+INSERT INTO employees VALUES (1, "Bob", 0);
+INSERT INTO employees VALUES (2, "Haskell", 1);
+
+INSERT INTO salaries VALUES (0, 1000);
+INSERT INTO salaries VALUES (1, 20000);
+INSERT INTO salaries VALUES (2, 500000);

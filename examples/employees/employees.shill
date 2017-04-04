@@ -1,0 +1,72 @@
+#! shill
+
+(import (plugin db))
+(export get_salaries)
+(export get_salaries)
+(export give_raise)
+(export eview/c)
+
+(define eview/c (dbview/c (fetch/p) (select/p) (join/p) (where/p) (update/p)))
+
+; Throughout, we assume the following definitions:
+; > (define/contract s eview/c (make-dbview "employees.db" "salaries"))
+; > (define/contract e eview/c (make-dbview "employees.db" "employees"))
+
+; A simple example of a company employee database. 
+; In this example, the company data is stored in two tables:
+; 1. an employees table which contains employee ids, names, and department ids.
+; 2. a salaries table which maps employee ids to salaries.
+;
+; One use of this data would be for a manager to view/update the salaries
+; of her employees. If the manager of department 0 wants to view the salaries
+; of her employees, a simpl SQLite query would be:
+;
+; SELECT salary, name
+; FROM employees as e 
+; INNER JOIN salaries as s on e.id = s.empid AND e.department = 0;
+;
+; Which only returns the salary, name tuples for employees in department 0.
+; To express the same idea using the shill db api we can write a very similar query:
+
+; Usage:
+; > (get_salaries e s)
+(define (get_salaries e s)
+	(fetch (select (join e s "lhs_id = rhs_empid and lhs_department = 0") "rhs_salary, lhs_name")))
+
+; Ignoring the lhs/rhs join prefixes, this is about the same as the SQL query.
+; One could also think of the input being a view of a department, which is a
+; restricted view of the whole employees table:
+
+; Usage:
+; > (get_salaries (where e "department = 0") s)
+(define (get_salaries_dep d s)
+	(fetch (select (join d s "lhs_id = rhs_empid") "rhs_salary, lhs_name")))
+
+; This produces the same result but represents a situation where the manager has
+; a capability for her department's view of the employees table:
+;
+; UPDATE salaries
+; SET salary = salary + 10
+; WHERE empid IN
+;	(SELECT id
+;	 FROM employees
+;	 WHERE department = 0);
+;
+; Currently, there's no clean way to express this with the shill api since there's
+; no notion of IN clauses and views returned from views are not updatable.
+; Here's the closest thing, assuming a department view as above:
+;
+(define (give_raise d s)
+	(define (build-where-term r)
+		(format "empid = ~a" (car r)))
+	(let* ([eids (cdr (fetch (select d "id")))]
+		   [where-q (string-join (map build-where-term eids) " or ")])
+		(update (where s where-q) "salary = salary + 10")))
+
+; This is a pretty nasty workaround: it fetchs all of the employees in the
+; department and uses their ids to build a disjunctive where clause over the
+; salary table, effectively performing the IN clause manually. This is messy
+; at the API level and probably slow at the database level, assuming that the
+; DBMS has some optimizations for IN queries. This example suggests that the API
+; likely needs a way to support updates for certain types of joins or else
+; provide support for IN clauses.
