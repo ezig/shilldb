@@ -67,6 +67,63 @@
 ; department and uses their ids to build a disjunctive where clause over the
 ; salary table, effectively performing the IN clause manually. This is messy
 ; at the API level and probably slow at the database level, assuming that the
-; DBMS has some optimizations for IN queries. This example suggests that the API
-; likely needs a way to support updates for certain types of joins or else
-; provide support for IN clauses.
+; DBMS has some optimizations for IN queries. This example suggests a useful extension
+; to the API would be a way to support a limited sort of joining that allows for updates.
+; This might look like:
+;
+; (in v1 v2 "c")
+;
+; Which corresponds approximiately to the SQL query
+; SELECT * FROM v1 WHERE c IN v2
+
+
+
+
+; Policy Considerations:
+; We now consider the policies we might like to enforce in these two situations. 
+; In both cases, we would like make sure that the department manager can only
+; view the portions of the salary table corresponding to employees in her department
+; 
+; The simplest way to do this would be to have a view capability already restricted
+; to just her departments view of the table, that is provide her:
+; 
+; (define salary_view (join e s "lhs_id = rhs_empid and lhs_department = 0"))
+;
+; From the get_salaries example. This works fine in this situation but might
+; not scale well to a more general case where there is some privileged view
+; v_p where portions of it are permitted to be read based on results of
+; joining with some views {v_1, v_2, ... v_n}. This approach would require providing
+; N different views when the program might only need a few of the possible ones.
+;
+; The contract:
+;
+; (dbview/c (join/p #:derive (fetch/p)))
+; 
+; Which provides a binary join privilege where the result of the join is fetch-able
+; is insufficient since a malicious user could modify some view they can update/insert into
+; to have arbitrary tuples, allowing them to reveal arbitrary tuples in v_p through a join.
+;
+; A more fine-grained join privilege could be something like:
+; 
+; (join/p c_p (list (cons v_1 c_1) (cons v_2 c_2) ... (cons v_n c_n) #:derive (fetch/p))
+;
+; This join privilege expresses that joins are only permitted on the privileged
+; view v_p of the form
+;
+; (join v_p v_i "c_p = c_i") 
+;
+; Where the pair (cons v_i c_i) is in the list provided to the privilege. This provides
+; a way of enumerating the acceptable joins and the granularity of particular columns
+; in particular views
+;
+; Note that since the results are joins are not updatable, this approach still doesn't
+; provide a way express a reasonable policy for the give_raise case. If a `in` operation
+; is added as discussed above, then an in/p privilege could be added like:
+;
+; (in/p c_p (list v_1 v_2 ... v_n))
+;
+; Which permits `in` operations of the form:
+;
+; (in v_p v_i c_p)
+;
+; Where v_i is in the list provided to the privilege.
