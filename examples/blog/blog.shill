@@ -6,8 +6,8 @@
 ;
 ; Usage example from shill prompt: 
 ; > (import (plugin db))
-; > (define/contract uv blogview/c (make-dbview "blog.db" "users"))
-; > (define/contract pv blogview/c (make-dbview "blog.db" "posts"))
+; > (define/contract uv blogview/c (open-dbview "blog.db" "users"))
+; > (define/contract pv blogview/c (open-dbview "blog.db" "posts"))
 ; 
 ; Display all of Bob's posts
 ; > (main uv pv "Bob" "list")
@@ -24,7 +24,7 @@
 ; (export (contract-out [main (-> blogview/c blogview/c string? string? any/c)]))
 (export main)
 
-(define blogview/c (dbview/c (fetch/p) (where/p)))
+(define blogview/c (dbview/c fetch/p where/p))
 
 ; Given a view which should correspond to a single user's view into the posts
 ; database, list out all of the posts that user can view in a readable form.

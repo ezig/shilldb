@@ -1,7 +1,8 @@
 #lang racket
 
-(provide make-dbview
-         (interface-out dbview))
+(provide open-dbview
+         dbview (capability-out dbview)
+         (operation-out where select join fetch delete update insert))
 (provide print-fetch-res)
 
 (require db)
@@ -125,42 +126,64 @@
                         (view-conn-info v)
                         (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
 
-(interface dbview (where select join fetch update delete insert))
-(capability
- dbview-impl dbview (v)
- ; Constructors
- ; This would actually be used by users to create a simple view out of a database table
- (define/ctor (make-dbview filename tablename)
-   (make-view-impl filename tablename))
- ; This constructor is used for methods like where that want to return a new
- ; view capability based on the view struct returned by where-impl, select-impl, or join-impl.
- ; We don't really want users of the capability to use this constructor
- ; because they might pass in a garbage view struct.
- (define/ctor (dbview-from-struct v-struct)
-   v-struct)
+(define-operation (where/p)
+  (where (view : where/p) (cond : string?)
+         -> (result : (and/c dbview? (inherit-privileges/c view)))))
 
- ; Methods that return new view capabilities
- (define/op (where cond)
-   (dbview-from-struct (where-impl (dbview-impl-v this) cond)))
- (define/op (select cols)
-   (dbview-from-struct (select-impl (dbview-impl-v this) cols)))
- (define/op (join v2 jcond)
-   (dbview-from-struct (join-impl (dbview-impl-v this) (dbview-impl-v v2) jcond)))
+(define-operation (select/p)
+  (select (view : select/p) (cols : string?)
+          -> (result : (and/c dbview? (inherit-privileges/c view)))))
 
- ; Methods that actually execute SQL queries
- (define/op (fetch)
-   (fetch-impl (dbview-impl-v this)))
- (define/op (update set-query)
-   (update-impl (dbview-impl-v this) set-query))
- (define/op (delete)
-   (delete-impl (dbview-impl-v this)))
- (define/op (insert cols vals)
-   (insert-impl (dbview-impl-v this) cols vals)))
+(define-operation (join/p)
+  (join (left : join/p) (right : join/p) (jcond : string?) ([prefix] : (list/c string? string?))
+        -> (result : (and/c dbview? (inherit-privileges/c left right)))))
+
+(define-operation (fetch/p)
+  (fetch (view : fetch/p) -> result))
+
+(define-operation (delete/p)
+  (delete (view : delete/p) -> result))
+
+(define-operation (update/p)
+  (update (view : update/p) (query : string?) ([where] : string?) -> result))
+
+(define-operation (insert/p)
+  (insert (view : insert/p) (cols : string?) (values : list?) -> result))
+
+(capability dbview (impl))
+
+(define (open-dbview filename table)
+  (dbview (make-view-impl filename table)))
+
+(define-instance (where (view : dbview) (cond : string?) -> (result : dbview?))
+  (dbview (where-impl (dbview-impl view) cond)))
+
+(define-instance (select (view : dbview) (cols : string?) -> (result : dbview?))
+  (dbview (select-impl (dbview-impl view) cols)))
+
+(define-instance (join (left : dbview)
+                       (right : dbview)
+                       (jcond : string?)
+                       ([prefix (list "lhs" "rhs")] : (list/c string? string?))
+                       -> (result : dbview?))
+  (dbview (join-impl (dbview-impl left) (dbview-impl right) jcond prefix)))
+
+(define-instance (fetch (view : dbview) -> result)
+  (fetch-impl (dbview-impl view)))
+
+(define-instance (delete (view : dbview) -> result)
+  (delete-impl (dbview-impl view)))
+
+(define-instance (update (view : dbview) (query : string?) ([where ""] : string?) -> result)
+  (update-impl (dbview-impl view) query where))
+
+(define-instance (insert (view : dbview) (cols : string?) (values : list?) -> result)
+  (insert-impl (dbview-impl view) cols values))
 
 (module+ test
-  (define v (make-dbview "test.db" "test"))
+  (define v (open-dbview "test.db" "test"))
   (define/contract v/f
-    (dbview/c (fetch/p)) v)
+    (dbview/c fetch/p) v)
   (fetch v/f))
   ; (define v1 (make-dbview "test.db" "v1"))
   ; (define j (join v v1 "lhs_b = rhs_l"))

@@ -6,11 +6,11 @@
 (export give_raise)
 (export eview/c)
 
-(define eview/c (dbview/c (fetch/p) (select/p) (join/p) (where/p) (update/p)))
+(define eview/c (dbview/c fetch/p select/p join/p where/p update/p))
 
 ; Throughout, we assume the following definitions:
-; > (define/contract s eview/c (make-dbview "employees.db" "salaries"))
-; > (define/contract e eview/c (make-dbview "employees.db" "employees"))
+; > (define/contract s eview/c (open-dbview "employees.db" "salaries"))
+; > (define/contract e eview/c (open-dbview "employees.db" "employees"))
 
 ; A simple example of a company employee database. 
 ; In this example, the company data is stored in two tables:
