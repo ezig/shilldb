@@ -1,6 +1,7 @@
 #lang racket
 
 (require db)
+(require "sqlite3_strings.rkt")
 
 (provide (all-defined-out))
 (provide (struct-out conn-info))
@@ -51,8 +52,7 @@
         (join-table-colnames t))))
 
 ; Parse utilities
-(define/contract (ast-to-string ast)
-  (-> ast? string?)
+(define (ast-to-string ast [id-prefix ""])
   (define (aux t)
     (match t
       [(clause connector c1 c2)
@@ -64,7 +64,9 @@
       [(atom type is-id? val)
        (if (and (not is-id?) (eq? type 'str))
            (format "'~a'" val)
-           (~a val))]))
+           (if is-id?
+               (format "~a~a" id-prefix val)
+               (~a val)))]))
   (if (null? (ast-root ast))
       ""
       (aux (ast-root ast))))
@@ -81,6 +83,26 @@
          (fun connection)
          (disconnect connection)))]
     [else (connection-type-error (conn-info-type cinfo))]))
+
+(define (exec-update-with-trigger cinfo trig fun)
+  (begin
+    (println (sqlite3-create-update-trigger trig))
+    (connect-and-exec cinfo
+                      (λ (c) (query-exec c (sqlite3-create-update-trigger trig))))
+    ; XXX: fix error propogation
+    (let ([res (with-handlers ([exn:fail? (λ (e) e)])
+                               (connect-and-exec cinfo fun))])
+      (connect-and-exec cinfo
+                        (λ (c) (query-exec c (sqlite3-remove-trigger trig))))
+      res)))
+
+(define/contract (trigger-for-view v)
+  (-> view? trigger?)
+  (let* ([where-q (ast-to-string (view-where-q v) "new.")]
+         [when-clause (if (non-empty-string? where-q)
+                          where-q
+                          "false")])
+    (trigger "tmp_trigger" (table-name (view-table v)) when-clause)))
 
 (define (type-to-sym connection-type type)
   (case connection-type
@@ -126,7 +148,7 @@
     (case ctype
       [(sqlite3) (sqlite3-query-string v)]
       [else (connection-type-error ctype)])))
-  
+
 (define/contract (delete-query-string v)
   (-> (and/c view? view-deletable) string?)
   (let ([ctype (conn-info-type (view-conn-info v))])
@@ -162,7 +184,7 @@
               [values (string-join values ",")])
          (format "insert into ~a (~a) values (~a)" tname cols values))]
       [else (connection-type-error ctype)])))
-  
+
 ; General utilities
 (define (zip l1 l2) (map cons l1 l2))
 

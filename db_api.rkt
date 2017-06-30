@@ -9,6 +9,7 @@
 (require shill/plugin)
 (require "sql_parse.rkt")
 (require "util.rkt")
+(require "sqlite3_strings.rkt")
 
 (define (make-view-impl filename tablename)
   (let* ([cinfo (conn-info filename 'sqlite3)]
@@ -91,15 +92,12 @@
   (let* ([new-v (if (non-empty-string? where-cond)
                     (where-impl v where-cond)
                     v)]
-         [rows (fetch-impl (struct-copy view new-v [colnames (list "*")]))]
-         [colnames (table-colnames (view-table v))]
-         [row-hts (map make-immutable-hash (map (λ (r) (zip colnames r)) (cdr rows)))]
-         [type-map (table-type-map (view-table v))]
-         [new-rows (apply-update set-query row-hts (view-updatable v) type-map)])
-    (if (andmap (where-to-fun (view-where-q v)) new-rows)
-        (connect-and-exec (view-conn-info v)
-                          (λ (c) (query-exec c (update-query-string new-v set-query))))
-        (raise "update violated view constraints"))))
+         [trigger (trigger-for-view v)])
+    (exec-update-with-trigger
+     (view-conn-info v)
+     trigger
+     (λ (c) (query-exec c (update-query-string new-v set-query)))
+     )))
 
 ; values as values not as strings
 ; data/collections collections lib
@@ -182,9 +180,10 @@
 
 (module+ test
   (define v (open-dbview "test.db" "test"))
-  (define/contract v/f
-    (dbview/c fetch/p) v)
-  (fetch v/f))
+  (define/contract vc
+    (dbview/c update/p where/p fetch/p) v)
+  (update (where vc "a < 6") "a = a + 4"))
+  ;(update (where vc "a < 7") "a = a + 5"))
   ; (define v1 (make-dbview "test.db" "v1"))
   ; (define j (join v v1 "lhs_b = rhs_l"))
   ; (fetch (where (select j "lhs_a") "lhs_a <= 3")))
