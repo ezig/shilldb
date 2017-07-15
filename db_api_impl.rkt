@@ -91,8 +91,7 @@
     (exec-update-with-trigger
      (view-conn-info v)
      trigger
-     (λ (c) (query-exec c (update-query-string new-v set-query)))
-     )))
+     (λ (c) (query-exec c (update-query-string new-v set-query))))))
 
 ; values as values not as strings
 ; data/collections collections lib
@@ -106,15 +105,8 @@
         (raise "insert invalid column names for view")
         (if (not valid-defaults?)
             (raise "insert invalid defaults for missing columns")
-            (let* ([defaults (map (λ (c)
-                                    (column-default (hash-ref (table-columns (view-table v)) c))) missing-cols)]
-                   [all-cols (append cols missing-cols)]
-                   [all-values (append values defaults)]
-                   [new-row (make-immutable-hash (zip all-cols all-values))]
-                   [type-map (table-type-map (view-table v))]
-                   [valid-row? ((where-to-fun (view-where-q v)) new-row)])
-                   (if (not valid-row?)
-                       (raise "insert violated view constraints")
-                       (connect-and-exec
-                        (view-conn-info v)
-                        (λ (c) (query-exec c (insert-query-string v all-cols all-values))))))))))
+            (let ([trigger (trigger-for-view v)])
+              (exec-insert-with-trigger
+                (view-conn-info v)
+                trigger
+                (λ (c) (query-exec c (insert-query-string v cols values)))))))))

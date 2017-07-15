@@ -20,6 +20,21 @@
         "END;"
       "END;")) (trigger-name t) (trigger-tname t) (trigger-when-clause t)))
 
+(define/contract (sqlite3-create-insert-trigger t)
+  (-> trigger? string?)
+  (format
+    (string-join
+      '("CREATE TRIGGER ~a"
+          "BEFORE INSERT"
+          "ON ~a"
+        "BEGIN"
+          "SELECT"
+          "CASE"
+            "WHEN NOT (~a) THEN"
+            "RAISE (ABORT, 'Insert violated view constraints')"
+          "END;"
+        "END;")) (trigger-name t) (trigger-tname t) (trigger-when-clause t)))
+
 (define/contract (sqlite3-remove-trigger t)
   (-> trigger? string?)
   (format "DROP TRIGGER ~a" (trigger-name t)))

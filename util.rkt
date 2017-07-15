@@ -86,12 +86,22 @@
 
 (define (exec-update-with-trigger cinfo trig fun)
   (begin
-    (println (sqlite3-create-update-trigger trig))
     (connect-and-exec cinfo
                       (λ (c) (query-exec c (sqlite3-create-update-trigger trig))))
     ; XXX: fix error propogation
     (let ([res (with-handlers ([exn:fail? (λ (e) e)])
-                               (connect-and-exec cinfo fun))])
+                 (connect-and-exec cinfo fun))])
+      (connect-and-exec cinfo
+                        (λ (c) (query-exec c (sqlite3-remove-trigger trig))))
+      res)))
+
+(define (exec-insert-with-trigger cinfo trig fun)
+  (begin
+    (connect-and-exec cinfo
+                      (λ (c) (query-exec c (sqlite3-create-insert-trigger trig))))
+    ; XXX: fix error propogation
+    (let ([res (with-handlers ([exn:fail? (λ (e) e)])
+                 (connect-and-exec cinfo fun))])
       (connect-and-exec cinfo
                         (λ (c) (query-exec c (sqlite3-remove-trigger trig))))
       res)))
@@ -101,7 +111,7 @@
   (let* ([where-q (ast-to-string (view-where-q v) "new.")]
          [when-clause (if (non-empty-string? where-q)
                           where-q
-                          "false")])
+                          "1")])
     (trigger "tmp_trigger" (table-name (view-table v)) when-clause)))
 
 (define (type-to-sym connection-type type)
