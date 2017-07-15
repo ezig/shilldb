@@ -3,6 +3,7 @@
 (provide parse-where)
 (provide restrict-where)
 (provide empty-where)
+(provide validate-update)
 (provide validate-select)
 
 (require "util.rkt")
@@ -12,7 +13,7 @@
 
 (define-tokens value-tokens (IDENTIFIER NUM STR COMP ADDOP MULOP))
 (define-empty-tokens op-tokens
-  (OP CP            ; ( )
+  (OP CP               ; ( )
       AND              ; and
       OR               ; or
       COMMA            ; ,
@@ -204,6 +205,9 @@
     (if (null? old-root)
         restrict-ast
         (ast 'where (clause 'AND old-root (ast-root restrict-ast))))))
+
+(define (validate-update str updatable type-map)
+  (parse-update str type-map updatable))
 
 (define (validate-select str type-map)
   (-> string? hash? hash?)

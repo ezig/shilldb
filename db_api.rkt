@@ -71,6 +71,6 @@
 (module+ test
   (define v (open-dbview "test.db" "test"))
   (define/contract vc
-    (dbview/c update/p insert/p where/p fetch/p) v)
-  (insert (where vc "a = 42") "a" (list 42)))
-  ;(update (where vc "a < 6") "a = a + 4"))
+    (dbview/c select/p update/p insert/p where/p fetch/p) v)
+  ;(insert (where vc "a = 42") "a" (list 42)))
+  (update (select (where vc "a < 6") "a") "b = a + 4"))

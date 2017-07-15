@@ -88,10 +88,12 @@
                     (where-impl v where-cond)
                     v)]
          [trigger (trigger-for-view v)])
-    (exec-update-with-trigger
-     (view-conn-info v)
-     trigger
-     (λ (c) (query-exec c (update-query-string new-v set-query))))))
+    (begin
+      (validate-update set-query (view-updatable v) (table-type-map (view-table v)))
+      (exec-update-with-trigger
+        (view-conn-info v)
+        trigger
+        (λ (c) (query-exec c (update-query-string new-v set-query)))))))
 
 ; values as values not as strings
 ; data/collections collections lib
