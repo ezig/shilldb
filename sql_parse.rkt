@@ -3,9 +3,7 @@
 (provide parse-where)
 (provide restrict-where)
 (provide empty-where)
-(provide where-to-fun)
 (provide validate-select)
-(provide apply-update)
 
 (require "util.rkt")
 (require parser-tools/yacc
@@ -155,33 +153,6 @@
       (hash-ref string-sym-to-fun op)
       (hash-ref arith-sym-to-fun op)))
 
-(define/contract (ast-to-fun ast)
-  (-> ast? procedure?)
-  (define (aux t)
-    (match t
-      [(clause connector c1 c2)
-       (case connector
-         [(AND) (λ (r) (and ((aux c1) r) ((aux c2) r)))]
-         [(OR) (λ (r) (or ((aux c1) r) ((aux c2) r)))]
-         [(COMMA) (λ (r) (append ((aux c1) r) ((aux c2) r)))]
-         [else (error 'ast-to-fun "invalid connector ~a" connector)])]
-      [(cond cop e1 e2)
-       (case (ast-clause-type ast)
-         [(where) (λ (r) ((comp-sym-to-fun cop (get-type e1)) ((aux e1) r) ((aux e2) r)))]
-         [(update) (λ (r) (list (cons (atom-val e1) ((aux e2) r))))]
-         [else (error 'ast-to-fun "invalid clause type ~a" (ast-clause-type ast))])]
-      [(exp op type e1 e2) (λ (r) ((binop-sym-to-fun op type) ((aux e1) r) ((aux e2) r)))]
-      [(atom type is-id? val) (if is-id?
-                                  (λ (r) (hash-ref r val))
-                                  (λ (r) val))]))
-  (let ([root (ast-root ast)])
-    (if (null? root)
-        (case (ast-clause-type ast)
-          [(where) (λ (r) #t)]
-          [(update) (λ (r) r)]
-          [else (error 'ast-to-fun "invalid clause type ~a" (ast-clause-type ast))])
-        (aux root))))
-
 (define/contract (select-to-type-map ast)
   (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'select))) hash?)
   (define (aux t)
@@ -234,22 +205,6 @@
         restrict-ast
         (ast 'where (clause 'AND old-root (ast-root restrict-ast))))))
 
-(define/contract (where-to-fun ast)
-  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'where))) procedure?)
-  (ast-to-fun ast))
-
-(define (apply-update str rows updatable type-map)
-  (let* ([update-ast (parse-update str type-map updatable)]
-         [update-fun (ast-to-fun update-ast)]
-         [row-fun (λ (row) (foldl (λ (replace h) (hash-set h (car replace) (cdr replace)))
-                                  row (update-fun row)))])
-    (map row-fun rows)))
-
 (define (validate-select str type-map)
   (-> string? hash? hash?)
   (select-to-type-map (parse-select str type-map)))
-
-; (define tm (make-hash (list (cons "col1" 'num) (cons "col2" 'num))))
-; (define updatable (list "col1"))
-; (define r (make-immutable-hash (list (cons "col1" 2) (cons "col2" 5))))
-; (define w (parse-where "col1 < col2" tm))
