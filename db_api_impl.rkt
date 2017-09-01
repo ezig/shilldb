@@ -104,9 +104,9 @@
          [missing-cols (set-subtract (table-colnames (view-table v)) cols)]
          [valid-defaults? (andmap (λ (c) (valid-default v c)) missing-cols)])
     (if (not valid-cols?)
-        (raise "insert invalid column names for view")
+        (error "insert invalid column names for view")
         (if (not valid-defaults?)
-            (raise "insert invalid defaults for missing columns")
+            (error "insert invalid defaults for missing columns")
             (let ([trigger (trigger-for-view v)])
               (exec-insert-with-trigger
                 (view-conn-info v)
