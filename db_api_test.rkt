@@ -95,7 +95,14 @@
                      (check-rows (where v "name < 'S' and name > 'D'") '((1 "Ezra")))
                      )
                    ))
-      ))
+      )
+    (test-case
+      "Insert fails when row is not within view"
+      (test-exec-expect-exn
+        (lambda (v) (insert (where v "name = Larry") "name" '("Ezra")))
+        )
+      )
+    )
   (test-suite
     "Tests for delete"
     (test-case
@@ -126,6 +133,70 @@
                      (delete (join v v ""))
                      )
                    ))
+      )
+    )
+  (test-suite
+    "Tests for update"
+    (test-case
+      "Basic update succeeds"
+      (test-exec (lambda (v)
+                   (begin
+                     (insert v "name" '("Ezra"))
+                     (update v "name = 'Larry'")
+                     (check-rows v '((1 "Larry")))
+                     )
+                   ))
+      )
+    (test-case
+      "Update of non-existant column fails"
+      (test-exec-expect-exn
+        (lambda (v) (update v "flavor = 'Cherry'"))
+        )
+      )
+    (test-case
+      "Update does not affect columns outside of view"
+      (test-exec (lambda (v)
+                   (begin
+                     (insert v "name" '("Ezra"))
+                     (update (where v "name != 'Ezra'") "name = 'Larry'")
+                     (check-rows v '((1 "Ezra")))
+                     )
+                   ))
+      )
+    (test-case
+      "Update that would cause a row to leave the view fails"
+      (test-exec-expect-exn
+        (lambda (v)
+          (begin
+            (insert-test-names v)
+            (update (where v "name = Ezra") "name = 'Larry'")
+            )
+          )
+        )
+      )
+    (test-case
+      "Update only affect views within optional where cond"
+      (test-exec
+        (lambda (v)
+          (begin
+            (insert v "name" '("Ezra"))
+            (update v "name = 'Larry'" "name != 'Ezra'")
+            (check-rows v '((1 "Ezra")))
+            )
+          )
+        )
+      )
+    (test-case
+      "Update can cause row to exit optional where cond as long as it stays in view"
+      (test-exec
+        (lambda (v)
+          (begin
+            (insert v "name" '("Ezra"))
+            (update (where v "name < 'Zebra'") "name = 'Larry'" "name = 'Ezra'")
+            (check-rows v '((1 "Larry")))
+            )
+          )
+        )
       )
     )
   )
