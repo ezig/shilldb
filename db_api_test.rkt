@@ -20,7 +20,6 @@
         (query-exec conn test-user-schema)
         (query-exec conn test-posts-schema))
         (disconnect conn)))
-        
 
 (define (cleanup-db)
   (delete-file db-path))
@@ -29,7 +28,7 @@
   (around
     (create-db)
     (define/contract v
-        (dbview/c select/p update/p insert/p where/p fetch/p) (open-dbview db-path "users"))
+        (dbview/c select/p update/p delete/p insert/p where/p fetch/p) (open-dbview db-path "users"))
     (testfun v)
     (cleanup-db)))
 
@@ -56,46 +55,79 @@
 (define (insert-test-names v)
   (insert-many v "name" '(("Ezra") ("Christos") ("Steve") ("Scott"))))
 
-(define-test-suite db-api-tests
-    (test-suite
-        "Basic tests for db api"
-        (test-case
-          "Empty db returns no rows"
-          (check-equal? 0 (length (test-exec fetch-rows))))
+(define-test-suite
+  db-api-tests
+  (test-suite
+    "Basic tests for db api"
+    (test-case
+      "Empty db returns no rows"
+      (check-equal? 0 (length (test-exec fetch-rows))))
     )
 
-    (test-suite
-      "Tests for insert"
-      (test-case
-        "Inserting invalid column name fails"
-        (test-exec-expect-exn (lambda (v) (insert v "FAIL" '("Ezra"))))
+  (test-suite
+    "Tests for insert"
+    (test-case
+      "Inserting invalid column name fails"
+      (test-exec-expect-exn (lambda (v) (insert v "FAIL" '("Ezra"))))
       )
-      (test-case
-        "Inserting with required row missing fails"
-        (test-exec-expect-exn (lambda (v) (insert v "" '())))
-        )
-      (test-case
-        "Insert provided vals must match number of given cols"
-          (test-exec-expect-exn (lambda (v) (insert v "name" '(1 "Ezra"))))
-        )
-        (test-case
-          "Insert into empty db succeeds"
-          (test-exec (lambda (v)
-              (begin
-                (insert v "name" '("Ezra"))
-                (check-rows v '((1 "Ezra"))
-              ))
-          )
-        ))
-        (test-case
-          "Insert many then fetch from where-restricted view"
-          (test-exec (lambda (v)
-              (begin
-                (insert-test-names v)
-                (check-rows (where v "name < 'S' and name > 'D'") '((1 "Ezra")))
-              )
-          ))
-        ))
-)
+    (test-case
+      "Inserting with required row missing fails"
+      (test-exec-expect-exn (lambda (v) (insert v "" '())))
+      )
+    (test-case
+      "Insert provided vals must match number of given cols"
+      (test-exec-expect-exn (lambda (v) (insert v "name" '(1 "Ezra"))))
+      )
+    (test-case
+      "Insert into empty db succeeds"
+      (test-exec (lambda (v)
+                   (begin
+                     (insert v "name" '("Ezra"))
+                     (check-rows v '((1 "Ezra"))
+                                 ))
+                   )
+                 ))
+    (test-case
+      "Insert many then fetch from where-restricted view"
+      (test-exec (lambda (v)
+                   (begin
+                     (insert-test-names v)
+                     (check-rows (where v "name < 'S' and name > 'D'") '((1 "Ezra")))
+                     )
+                   ))
+      ))
+  (test-suite
+    "Tests for delete"
+    (test-case
+      "Deleting inserted rows succeeds"
+      (test-exec (lambda (v)
+                   (begin
+                     (insert-test-names v)
+                     (delete v)
+                     (check-rows v '())
+                     ))
+                 )
+      )
+    (test-case
+      "Deleting doesn't touch rows outside of the view"
+      (test-exec (lambda (v)
+                   (begin
+                     (insert-test-names v)
+                     (delete (where v "name != 'Ezra'"))
+                     (check-rows v '((1 "Ezra")))
+                     )
+                   ))
+      )
+    (test-case
+      "Deleting fails on non-deletable view"
+      (test-exec-expect-exn (lambda (v)
+                   (begin
+                     ; Joined views are not deletable
+                     (delete (join v v ""))
+                     )
+                   ))
+      )
+    )
+  )
 
 (run-tests db-api-tests)
