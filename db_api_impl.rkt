@@ -97,8 +97,13 @@
 
 ; values as values not as strings
 ; data/collections collections lib
+; add more of the error handlig into the contract
 (define/contract (insert-impl v cols values)
-  (-> (and/c view? view-insertable) string? list? any/c)
+  (->i ([v (and/c view? view-insertable)]
+        [cols string?]
+        [values (cols) (and/c list?
+            (lambda (vs) (equal? (length vs) (length (string-split cols ",")))))])
+        [result any/c])
   (let* ([cols (map string-trim (string-split cols ","))]
          [valid-cols? (subset? cols (view-colnames v))]
          [missing-cols (set-subtract (table-colnames (view-table v)) cols)]
