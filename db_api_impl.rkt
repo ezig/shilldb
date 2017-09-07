@@ -5,22 +5,23 @@
 (require db
          "sql_parse.rkt"
          "util.rkt"
-         "sqlite3_strings.rkt")
+         "sqlite3_db_conn.rkt"
+         "db_conn.rkt")
 
 (define (make-view-impl filename tablename)
-  (let* ([cinfo (conn-info filename 'sqlite3)]
+  (let* ([cinfo (sqlite3-db-conn filename)]
          ; Fix string-append hack for tableinfo to avoid injection attacks
          [table-query (format "PRAGMA table_info(~a)" tablename)]
          [tableinfo (connect-and-exec cinfo (λ (c) (query-rows c table-query)))]
          [columns (begin (for ([col tableinfo]
-                               #:when (and (eq? 'num (type-to-sym 'sqlite3 (vector-ref col 2)))
+                               #:when (and (eq? 'num (parse-type cinfo (vector-ref col 2)))
                                            (not (sql-null? (vector-ref col 4)))))
                                (let ([new-default (string->number (vector-ref col 4))])
                                  (vector-set! col 4 new-default)))
                          (map (λ (col) (apply column (vector->list col))) tableinfo))]
          [column-hash (make-hash (map (λ (col) (cons (column-name col) col)) columns))]
          [type-map (make-hash (map (λ (col) (cons (column-name col)
-                                       (type-to-sym 'sqlite3 (column-type col)))) columns))]
+                                       (parse-type cinfo (column-type col)))) columns))]
          [column-names (map (λ (col) (column-name col)) columns)]
          [t (table tablename type-map column-names column-hash)])
     (view cinfo t column-names empty-where column-names #t #t)))
@@ -71,14 +72,18 @@
 
 (define/contract (fetch-impl v)
   (-> view? any)
-  (cons (view-colnames v)
-    (map vector->list (connect-and-exec (view-conn-info v)
-                                        (λ (c) (query-rows c (query-string v)))))))
+  (let* ([conn (view-conn-info v)]
+         [fetch-q (build-fetch-query conn v)])
+    (cons (view-colnames v)
+          (map vector->list (connect-and-exec conn
+                                              (λ (c) (query-rows c fetch-q)))))))
 
 (define/contract (delete-impl v)
   (-> (and/c view? view-deletable) any/c)
-  (connect-and-exec (view-conn-info v)
-                    (λ (c) (query-exec c (delete-query-string v)))))
+  (let* ([conn (view-conn-info v)]
+         [delete-q (build-delete-query conn v)])
+    (connect-and-exec conn
+                    (λ (c) (query-exec c delete-q)))))
 
 (define/contract (update-impl v set-query [where-cond ""])
   (->* ((and/c view? (λ (v) (not (null? (view-updatable v))))) string?)
@@ -86,14 +91,13 @@
        any/c)
   (let* ([new-v (if (non-empty-string? where-cond)
                     (where-impl v where-cond)
-                    v)]
-         [trigger (trigger-for-view v)])
+                    v)])
     (begin
       (validate-update set-query (view-updatable v) (table-type-map (view-table v)))
-      (exec-update-with-trigger
-        (view-conn-info v)
-        trigger
-        (λ (c) (query-exec c (update-query-string new-v set-query)))))))
+      (let* ([cinfo (view-conn-info v)]
+             [update-q (build-update-query (view-conn-info v) new-v set-query)])
+        (connect-and-exec-with-trigger cinfo v 'update
+                                       (λ (c) (query-exec c update-q)))))))
 
 ; values as values not as strings
 ; data/collections collections lib
@@ -112,8 +116,7 @@
         (error "insert invalid column names for view")
         (if (not valid-defaults?)
             (error "insert invalid defaults for missing columns")
-            (let ([trigger (trigger-for-view v)])
-              (exec-insert-with-trigger
-                (view-conn-info v)
-                trigger
-                (λ (c) (query-exec c (insert-query-string v cols values)))))))))
+            (let* ([cinfo (view-conn-info v)]
+                   [insert-q (build-insert-query cinfo v cols values)])
+              (connect-and-exec-with-trigger cinfo v 'insert
+                                             (λ (c) (query-exec c insert-q))))))))
