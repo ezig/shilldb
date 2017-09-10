@@ -22,11 +22,12 @@
    (define (build-fetch-query dbconn view)
      (query-string view))
    (define/contract
-     (install-view-trigger dbconn view trig-type)
-     (-> dbconn? view? (lambda (t) (or (eq? 'update t) (eq? 'insert t))) any/c)
-     (let* ([trig-name (get-fresh-trigname dbconn view)]
+     (install-view-trigger dbconn view trig-type [suffix-num 0])
+     (->* (dbconn? view? (lambda (t) (or (eq? 'update t) (eq? 'insert t))))
+          (number?)
+          any/c)
+     (let* ([trig-name (format "view_trigger~a" suffix-num)]
             [table-name (table-name (view-table view))]
-            ; XXX hacky way to prepend new
             [where-q (ast-to-string (view-where-q view) "new.")]
             [when-clause (if (non-empty-string? where-q)
                              where-q
@@ -36,10 +37,17 @@
                          table-name
                          when-clause
                          trig-type)])
-       (begin
-         (connect-and-exec dbconn
-                           (lambda (c) (query-exec c trigger-q)))
-         trig-name)))
+       ; XXX hacky way to deal with duplicate trigger names
+       (with-handlers ([exn:fail? (lambda (e)
+                                    (install-view-trigger
+                                      dbconn
+                                      view
+                                      trig-type
+                                      (+ suffix-num 1)))])
+         (begin
+           (connect-and-exec dbconn
+                             (lambda (c) (query-exec c trigger-q)))
+           trig-name))))
    (define (remove-trigger dbconn trig-name)
      (connect-and-exec dbconn 
                        (lambda (c)
@@ -51,10 +59,6 @@
             'str
             'num)))
    ])
-
-; XXX actually get a fresh trigger name
-(define (get-fresh-trigname dbconn view)
-  "tmp_trigger")
 
 (define (build-trigger-query trigger-name table-name trigger-when-clause trigger-type)
   (let ([type-string
