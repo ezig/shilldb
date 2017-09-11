@@ -34,6 +34,12 @@
 (define-operation (insert/p)
   (insert (view : insert/p) (cols : string?) (values : list?) -> result))
 
+; XXX: what privileges should be required on each argument view?
+; what should the privileges on the resulting view be?
+(define-operation (in/p)
+  (in (view : in/p) (col : string?) (subv : in/p)
+      -> (result : (and/c dbview? (inherit-privileges/c view subv)))))
+
 (capability dbview (impl))
 
 (define (open-dbview filename table)
@@ -68,9 +74,12 @@
                          (values : list?) -> result)
   (insert-impl (dbview-impl view) cols values))
 
+(define-instance (in (view : dbview)
+                     (col : string?)
+                     (subv : dbview) -> (result : dbview?))
+  (dbview (in-impl (dbview-impl view) col (dbview-impl subv))))
+
 (module+ test
-  (define v (open-dbview "test.db" "test"))
-  (define/contract vc
-    (dbview/c select/p update/p insert/p where/p fetch/p) v)
-  ;(insert (where vc "a = 42") "a" (list 42)))
-  (update (select (where vc "a < 6") "a") "b = a + 4"))
+  (define/contract v1 (dbview/c fetch/p in/p) (open-dbview "test.db" "v1"))
+  (define/contract v2 (dbview/c fetch/p in/p) (open-dbview "test.db" "v2"))
+  (fetch (in (in v1 "l" v2) "l" v2)))

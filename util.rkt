@@ -16,7 +16,8 @@
 (struct column (cid name type notnull default primary-key))
 (struct table (name type-map colnames columns))
 (struct join-table (type-map colnames views prefixes))
-(struct view (conn-info table colnames where-q updatable insertable deletable))
+(struct in-cond (column subv))
+(struct view (conn-info table colnames where-q ins updatable insertable deletable))
 
 (struct atom (type is-id? val))
 (struct exp (op type e1 e2))
@@ -83,6 +84,13 @@
   (if (<= (length l) 1)
       #t
       (helper l (list))))
+
+(define (string-merge s1 s2 joiner)
+  (if (non-empty-string? s1)
+      (if (non-empty-string? s2)
+          (string-join (list s1 s2) joiner)
+          s1)
+      s2))
 
 ; Printing utilities
 (define (print-fetch-res fr)

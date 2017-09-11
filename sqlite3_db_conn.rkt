@@ -80,9 +80,14 @@
 
 (define/contract (where-clause-string v)
   (-> view? string?)
-  (let ([where-q (ast-to-string (view-where-q v))])
-    (if (non-empty-string? where-q)
-        (format " where ~a" where-q)
+  (let* ([where-q (ast-to-string (view-where-q v))]
+         [in-q (string-join (map (lambda (icnd) (format "~a in (~a)"
+                       (in-cond-column icnd)
+                       (query-string (in-cond-subv icnd)))) (view-ins v))
+                            " and ")]
+         [q (string-merge where-q in-q " and ")])
+    (if (non-empty-string? q)
+        (format " where ~a" q)
         "")))
 
 (define/contract (query-string v)

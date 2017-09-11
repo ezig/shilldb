@@ -24,8 +24,7 @@
                                        (parse-type cinfo (column-type col)))) columns))]
          [column-names (map (λ (col) (column-name col)) columns)]
          [t (table tablename type-map column-names column-hash)])
-    (view cinfo t column-names empty-where column-names #t #t)))
-
+    (view cinfo t column-names empty-where '() column-names #t #t)))
 
 ; check if columns are within the views as a contract
 (define/contract (select-impl v cols)
@@ -68,7 +67,7 @@
              [v2-colnames (map (λ (c) (format "~a_~a" (second prefix) c)) (view-get-colnames v2))]
              [colnames (append v1-colnames v2-colnames)]
              [jtable (join-table type-map colnames (list v1 v2) prefix)])
-        (view cinfo jtable colnames join-q null #f #f)))))
+        (view cinfo jtable colnames join-q '() null #f #f)))))
 
 (define/contract (fetch-impl v)
   (-> view? any)
@@ -98,6 +97,16 @@
              [update-q (build-update-query (view-conn-info v) new-v set-query)])
         (connect-and-exec-with-trigger cinfo v 'update
                                        (λ (c) (query-exec c update-q)))))))
+
+(define/contract
+  (in-impl v col subv)
+  (->i ([v view?]
+        [col (v) (and/c string?
+                        (lambda (col) (member col (view-updatable v))))]
+        [subv (and/c view?
+                     (lambda (v) (eq? 1 (length (view-colnames v)))))])
+       [result view?])
+  (struct-copy view v [ins (append (view-ins v) (list (in-cond col subv)))]))
 
 ; values as values not as strings
 ; data/collections collections lib
