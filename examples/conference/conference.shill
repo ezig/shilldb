@@ -1,0 +1,61 @@
+#! shill
+
+(import (plugin db))
+(export get_reviews)
+(export cview/c)
+
+(define cview/c (dbview/c fetch/p select/p join/p where/p where-in/p update/p))
+
+; Throughout, we assume the following definitions:
+; > (define/contract pe cview/c (open-dbview "conference.db" "people"))
+; > (define/contract c cview/c (open-dbview "conference.db" "conflicts")) 
+; > (define/contract pa cview/c (open-dbview "conference.db" "papers"))
+; > (define/contract r cview/c (open-dbview "conference.db" "reviews"))
+
+; Consider a conference that is represented in a database by four tables:
+; 1. A table people which contains names of people and their institution.
+; 2. A table of conflicts which lists pairs of people who are in a conflict
+;    of interest (order doesn't matter)
+; 3. A table of papers with their titles and authors (for simplicity, we
+;    restrict that a paper only have one author. A more proper way to do
+;    this might be to have a separate authors table which maps papers to authors)
+; 4. A table of reviews which maps pairs of people and papers to the review
+;    that the person wrote for the paper.
+
+; Suppose that Steve is the program chair and wants to look at all of the 
+; reviews of papers submitted so far (maybe so he can bother people who
+; have not submitted their reviews yet).
+; He should not be able to see reviews of his own papers, reviews of papers
+; where the authors are people with whom he has a conflict of interest,
+; or reviews written by people with whom he has a conflict of interest
+; (I don't know if this is realistic, but it works as an exercise).
+
+; Currently, the solution would be something like this:
+
+(define (get_reviews pe c pa r)
+    ; Get all of the ids of people in conflict with Steve, including himself.
+    (define steve-conflict-ids
+        (select (join pe
+            (join (where pe "name = 'Steve'") c "lhs_id = rhs_person1 or lhs_id = rhs_person2")
+             "lhs_id = rhs_rhs_person1 or lhs_id = rhs_rhs_person2 or lhs_name = 'Steve'")
+        "lhs_id"))
+    ; Using the previous list of people in conflict, get all of the paper ids
+    ; where the author is in conflict with Steve
+    (define steve-conflict-paper-ids
+        (select (join pa steve-conflict-ids "lhs_author = rhs_lhs_id") "lhs_id"))
+    ; Restrict the list of reviews to only those that did not fall into
+    ; one of the above two categories by using "where... not in ..." queries
+    (define viewable-reviews
+        (where-in (where-in r "reviewer" steve-conflict-ids #t)
+            "paper" steve-conflict-paper-ids #t))
+    (fetch viewable-reviews))
+
+; To run, execute in the shill commandline:
+;
+; (import (plugin db))
+; (define/contract pe cview/c (open-dbview "conference.db" "people"))
+; (define/contract c cview/c (open-dbview "conference.db" "conflicts")) 
+; (define/contract pa cview/c (open-dbview "conference.db" "papers"))
+; (define/contract r cview/c (open-dbview "conference.db" "reviews"))
+; (get_reviews pe c pa r)
+
