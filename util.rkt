@@ -16,7 +16,7 @@
 (struct column (cid name type notnull default primary-key))
 (struct table (name type-map colnames columns))
 (struct join-table (type-map colnames views prefixes))
-(struct in-cond (column subv))
+(struct in-cond (column subv neg))
 (struct view (conn-info table colnames where-q ins updatable insertable deletable))
 
 (struct atom (type is-id? val))

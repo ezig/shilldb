@@ -37,7 +37,7 @@
 ; XXX: what privileges should be required on each argument view?
 ; what should the privileges on the resulting view be?
 (define-operation (in/p)
-  (in (view : in/p) (col : string?) (subv : in/p)
+  (in (view : in/p) (col : string?) (subv : in/p) ([neg] : boolean?)
       -> (result : (and/c dbview? (inherit-privileges/c view subv)))))
 
 (capability dbview (impl))
@@ -76,10 +76,11 @@
 
 (define-instance (in (view : dbview)
                      (col : string?)
-                     (subv : dbview) -> (result : dbview?))
-  (dbview (in-impl (dbview-impl view) col (dbview-impl subv))))
+                     (subv : dbview)
+                     ([neg #f] : boolean?) -> (result : dbview?))
+  (dbview (in-impl (dbview-impl view) col (dbview-impl subv) neg)))
 
 (module+ test
   (define/contract v1 (dbview/c fetch/p in/p) (open-dbview "test.db" "v1"))
   (define/contract v2 (dbview/c fetch/p in/p) (open-dbview "test.db" "v2"))
-  (fetch (in (in v1 "l" v2) "l" v2)))
+  (fetch (in (in v1 "l" v2) "l" v2 #t)))

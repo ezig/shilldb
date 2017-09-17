@@ -99,14 +99,15 @@
                                        (λ (c) (query-exec c update-q)))))))
 
 (define/contract
-  (in-impl v col subv)
+  (in-impl v col subv [neg #f])
   (->i ([v view?]
         [col (v) (and/c string?
                         (lambda (col) (member col (view-updatable v))))]
         [subv (and/c view?
-                     (lambda (v) (eq? 1 (length (view-colnames v)))))])
+                     (lambda (v) (eq? 1 (length (view-colnames v)))))]
+        [neg boolean?])
        [result view?])
-  (struct-copy view v [ins (append (view-ins v) (list (in-cond col subv)))]))
+  (struct-copy view v [ins (append (view-ins v) (list (in-cond col subv neg)))]))
 
 ; values as values not as strings
 ; data/collections collections lib

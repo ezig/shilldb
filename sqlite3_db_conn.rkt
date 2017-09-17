@@ -81,8 +81,9 @@
 (define/contract (where-clause-string v)
   (-> view? string?)
   (let* ([where-q (ast-to-string (view-where-q v))]
-         [in-q (string-join (map (lambda (icnd) (format "~a in (~a)"
+         [in-q (string-join (map (lambda (icnd) (format "~a ~a (~a)"
                        (in-cond-column icnd)
+                       (if (in-cond-neg icnd) "not in" "in")
                        (query-string (in-cond-subv icnd)))) (view-ins v))
                             " and ")]
          [q (string-merge where-q in-q " and ")])
