@@ -1,8 +1,9 @@
 #lang racket
 
 (provide open-dbview
+         print-fetch-res
          dbview (capability-out dbview)
-         (operation-out where select join fetch delete update insert))
+         (operation-out where select join fetch delete update insert where-in))
 
 (require shill/plugin
          "db_api_impl.rkt")
@@ -36,14 +37,22 @@
 
 ; XXX: what privileges should be required on each argument view?
 ; what should the privileges on the resulting view be?
-(define-operation (in/p)
-  (in (view : in/p) (col : string?) (subv : in/p) ([neg] : boolean?)
+(define-operation (where-in/p)
+  (where-in (view : where-in/p) (col : string?) (subv : where-in/p) ([neg] : boolean?)
       -> (result : (and/c dbview? (inherit-privileges/c view subv)))))
 
 (capability dbview (impl))
 
 (define (open-dbview filename table)
   (dbview (make-view-impl filename table)))
+
+; XXX: this should be defined somewhere else
+(define (print-fetch-res fr)
+  (begin
+    (displayln (string-join (car fr) ", "))
+    (displayln "-----")
+    (for ([row (cdr fr)])
+        (displayln (string-join (map ~a row) ", ")))))
 
 (define-instance (where (view : dbview) (cond : string?) -> (result : dbview?))
   (dbview (where-impl (dbview-impl view) cond)))
@@ -74,13 +83,13 @@
                          (values : list?) -> result)
   (insert-impl (dbview-impl view) cols values))
 
-(define-instance (in (view : dbview)
+(define-instance (where-in (view : dbview)
                      (col : string?)
                      (subv : dbview)
                      ([neg #f] : boolean?) -> (result : dbview?))
   (dbview (in-impl (dbview-impl view) col (dbview-impl subv) neg)))
 
 (module+ test
-  (define/contract v1 (dbview/c fetch/p in/p) (open-dbview "test.db" "v1"))
-  (define/contract v2 (dbview/c fetch/p in/p) (open-dbview "test.db" "v2"))
-  (fetch (in (in v1 "l" v2) "l" v2 #t)))
+  (define/contract v1 (dbview/c fetch/p where-in/p) (open-dbview "test.db" "v1"))
+  (define/contract v2 (dbview/c fetch/p where-in/p) (open-dbview "test.db" "v2"))
+  (fetch (where-in (where-in v1 "l" v2) "l" v2 #t)))
