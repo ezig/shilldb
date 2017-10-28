@@ -26,13 +26,13 @@
    #:projection
    (λ (ctc)
      (define full-details (view-proxy-full-details ctc))
-     (define fetch/c (make-fetch/c (assoc "fetch" full-details)))
-     (define where/c (make-where/c (assoc "where" full-details)))
      (λ (blame)
        (define (redirect-proc accessor-contract)
          (λ (view field-value)
            (((contract-projection accessor-contract) blame) field-value)))
        (λ (val)
+         (define fetch/c (make-fetch/c val (assoc "fetch" full-details)))
+         (define where/c (make-where/c val (assoc "where" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          ;(define old-rights (and (rights? val) (get-rights val)))
@@ -43,8 +43,8 @@
                              shill-view-where (redirect-proc where/c)
                              set-shill-view-where! mutator-redirect-proc))))))
 
-(define (make-fetch/c details)
-  (define (fetch-pre/c pre view)
+(define (make-fetch/c view details)
+  (define (fetch-pre/c view pre)
     (make-contract
      #:projection
      (λ (b)
@@ -52,18 +52,18 @@
          (λ (v)
            (f (pre view)))))))
   (cond [(list? details)
-         (fetch-pre/c (second details))]))
+         (fetch-pre/c view (second details))]))
 
-(define (make-where/c details)
-  (define (where-pre/c pre)
+(define (make-where/c view details)
+  (define (where-pre/c view pre)
     (make-contract
      #:projection
      (λ (b)
        (λ (f)
          (λ (v w)
-           (f (pre v) w))))))
+           (f (pre view) w))))))
   (cond [(list? details)
-         (where-pre/c (second details))]))
+         (where-pre/c view (second details))]))
 
 (define (view/c
          #:fetch [f (list "fetch" (λ (x) x))]
@@ -78,8 +78,7 @@
   (build-view (make-view-impl filename table)))
 
 (module+ test
-  (define/contract v1 (view/c #:fetch (list "fetch" (λ (v) (where v "a < 10")))) (open-view "test.db" "test"))
+  (define/contract v1 (view/c #:fetch (list "where" (λ (v) (where v "a < 10")))) (open-view "test.db" "test"))
   (define/contract v2 (view/c #:fetch (list "fetch" (λ (v) (where v "b < 80")))) v1)
   ;(fetch (where (open-view "test.db" "test") "a < 5"))
-  (fetch v1)
-  (fetch v2))
+  (fetch (where v1 "b < 80")))
