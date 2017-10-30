@@ -48,6 +48,21 @@
                              shill-view-select (redirect-proc select/c)
                              set-shill-view-select! mutator-redirect-proc))))))
 
+(struct enhance-blame/c (ctc msg)
+  #:property prop:contract
+  (build-contract-property
+   #:projection
+   (λ (ctc)
+     (define inner-ctc (enhance-blame/c-ctc ctc))
+     (define msg (enhance-blame/c-msg ctc))
+     (λ (blame)
+       (define new-blame 
+         (blame-add-context 
+          blame 
+          (string-append msg " (insufficient privileges for " msg "!) in")))
+       (λ (val)
+         (((contract-projection inner-ctc) new-blame) val))))))
+
 (define (make-fetch/c details)
   (define (fetch-pre/c pre)
     (make-contract
@@ -56,10 +71,12 @@
        (λ (f)
          (λ (v)
            (f (pre v)))))))
-  (cond [(= (length details) 2)
-         (->* (shill-view?) #:pre (second details) any)]
-        [else
-         (and/c (->* (shill-view?) #:pre (second details) any) (fetch-pre/c (third details)))]))
+  (enhance-blame/c
+   (cond [(= (length details) 2)
+          (->* (shill-view?) #:pre (second details) any)]
+         [else
+          (and/c (->* (shill-view?) #:pre (second details) any) (fetch-pre/c (third details)))])
+  "fetch"))
 
 (define (make-where/c details)
   (define (where-pre/c pre)
@@ -70,13 +87,15 @@
          (λ (v w)
            (f (pre v) w))))))
   (define dl (length details))
-  (cond [(= dl 2)
-         (->* (shill-view? string?) #:pre (second details) any)]
-        [(= dl 3)
-         (and/c (->* (shill-view? string?) #:pre (second details) any) (where-pre/c (third details)))]
-        [(= dl 4)
-         (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (where-pre/c (third details)))]))
-
+  (enhance-blame/c
+   (cond [(= dl 2)
+          (->* (shill-view? string?) #:pre (second details) any)]
+         [(= dl 3)
+          (and/c (->* (shill-view? string?) #:pre (second details) any) (where-pre/c (third details)))]
+         [(= dl 4)
+          (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (where-pre/c (third details)))])
+  "where"))
+  
 (define (make-select/c details)
   (define (select-pre/c pre)
     (make-contract
@@ -86,13 +105,15 @@
          (λ (v c)
            (f (pre v) c))))))
   (define dl (length details))
-  (cond [(= dl 2)
-         (->* (shill-view? string?) #:pre (second details) any)]
-        [(= dl 3)
-         (and/c (->* (shill-view? string?) #:pre (second details) any) (select-pre/c (third details)))]
-        [(= dl 4)
-         (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (select-pre/c (third details)))]))
-
+  (enhance-blame/c
+   (cond [(= dl 2)
+          (->* (shill-view? string?) #:pre (second details) any)]
+         [(= dl 3)
+          (and/c (->* (shill-view? string?) #:pre (second details) any) (select-pre/c (third details)))]
+         [(= dl 4)
+          (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (select-pre/c (third details)))])
+  "select"))
+  
 (define (view/c
          #:fetch [f (list "fetch" #f)]
          #:where [w (list "where" #f)]
@@ -112,4 +133,4 @@
   (define/contract v1 (view/c #:fetch (list "fetch" #t (λ (v) (where v "a < 10")))
                               #:where (list "where" #t values (λ (w) (eq? w "a < 10")))) (open-view "test.db" "test"))
   (define/contract v2 (view/c #:fetch (list "fetch" (λ (v) (where v "b < 80")))) v1)
-  (fetch v1))
+  (select v1 "a"))
