@@ -20,7 +20,7 @@
   #:property prop:contract
   (build-contract-property
    #:name
-   (λ (ctc) 'file/c)
+   (λ (ctc) 'view/c)
    #:first-order
    (λ (ctc)
      (λ (val)
@@ -33,9 +33,9 @@
          (λ (view field-value)
            (((contract-projection accessor-contract) blame) field-value)))
        (λ (val)
-         (define fetch/c (make-fetch/c val (assoc "fetch" full-details)))
-         (define where/c (make-where/c val (assoc "where" full-details)))
-         (define select/c (make-select/c val (assoc "select" full-details)))
+         (define fetch/c (make-fetch/c (assoc "fetch" full-details)))
+         (define where/c (make-where/c (assoc "where" full-details)))
+         (define select/c (make-select/c (assoc "select" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          ;(define old-rights (and (rights? val) (get-rights val)))
@@ -48,43 +48,55 @@
                              shill-view-select (redirect-proc select/c)
                              set-shill-view-select! mutator-redirect-proc))))))
 
-(define (make-fetch/c view details)
-  (define (fetch-pre/c view pre)
+(define (make-fetch/c details)
+  (define (fetch-pre/c pre)
     (make-contract
      #:projection
      (λ (b)
        (λ (f)
          (λ (v)
-           (f (pre view)))))))
-  (cond [(list? details)
-         (fetch-pre/c view (second details))]))
+           (f (pre v)))))))
+  (cond [(= (length details) 2)
+         (->* (shill-view?) #:pre (second details) any)]
+        [else
+         (and/c (->* (shill-view?) #:pre (second details) any) (fetch-pre/c (third details)))]))
 
-(define (make-where/c view details)
-  (define (where-pre/c view pre)
+(define (make-where/c details)
+  (define (where-pre/c pre)
     (make-contract
      #:projection
      (λ (b)
        (λ (f)
          (λ (v w)
-           (f (pre view) w))))))
-  (cond [(list? details)
-         (where-pre/c view (second details))]))
+           (f (pre v) w))))))
+  (define dl (length details))
+  (cond [(= dl 2)
+         (->* (shill-view? string?) #:pre (second details) any)]
+        [(= dl 3)
+         (and/c (->* (shill-view? string?) #:pre (second details) any) (where-pre/c (third details)))]
+        [(= dl 4)
+         (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (where-pre/c (third details)))]))
 
-(define (make-select/c view details)
-  (define (select-pre/c view pre)
+(define (make-select/c details)
+  (define (select-pre/c pre)
     (make-contract
      #:projection
      (λ (b)
        (λ (f)
          (λ (v c)
-           (f (pre view) c))))))
-  (cond [(list? details)
-         (select-pre/c view (second details))]))
+           (f (pre v) c))))))
+  (define dl (length details))
+  (cond [(= dl 2)
+         (->* (shill-view? string?) #:pre (second details) any)]
+        [(= dl 3)
+         (and/c (->* (shill-view? string?) #:pre (second details) any) (select-pre/c (third details)))]
+        [(= dl 4)
+         (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (select-pre/c (third details)))]))
 
 (define (view/c
-         #:fetch [f (list "fetch" (λ (x) x))]
-         #:where [w (list "where" (λ (x) x))]
-         #:select [s (list "select" (λ (x) x))])
+         #:fetch [f (list "fetch" #f)]
+         #:where [w (list "where" #f)]
+         #:select [s (list "select" #f)])
   (view-proxy (list f w s) #f))
 
 (define (fetch view) ((shill-view-fetch view) view))
@@ -97,6 +109,7 @@
   (build-view (make-view-impl filename table)))
 
 (module+ test
-  (define/contract v1 (view/c #:fetch (list "fetch" (λ (v) (where v "a < 5")))) (open-view "test.db" "test"))
-  (define/contract v2 (view/c #:fetch (list "fetch" (λ (v) (where v "b < 50")))) v1)
-  (fetch v2))
+  (define/contract v1 (view/c #:fetch (list "fetch" #t (λ (v) (where v "a < 10")))
+                              #:where (list "where" #t values (λ (w) (eq? w "a < 10")))) (open-view "test.db" "test"))
+  (define/contract v2 (view/c #:fetch (list "fetch" (λ (v) (where v "b < 80")))) v1)
+  (fetch v1))
