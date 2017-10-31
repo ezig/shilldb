@@ -80,18 +80,18 @@
   (define dl (length details))
   (enhance-blame/c
    (cond [(= dl 2)
-          (->* (shill-view? string?) #:pre (second details) any)]
+          (->* (shill-view? string?) #:pre (second details) (view-proxy full-details #f))]
          [(= dl 3)
-          (->* (shill-view? (and/c string? (third details))) #:pre (second details) any)])
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (view-proxy full-details #f))])
   "where"))
   
 (define (make-select/c details full-details)
   (define dl (length details))
   (enhance-blame/c
    (cond [(= dl 2)
-          (->* (shill-view? string?) #:pre (second details) any)]
+          (->* (shill-view? string?) #:pre (second details) (view-proxy full-details #f))]
          [(= dl 3)
-          (->* (shill-view? (and/c string? (third details))) #:pre (second details) any)])
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (view-proxy full-details #f))])
   "select"))
   
 (define (view/c
@@ -111,9 +111,7 @@
 
 (module+ test
   (define/contract v1 (view/c #:fetch (list "fetch" #t (λ (v) (where v "a < 10")))
-                              #:select (list "select" #t)
-                              #:where (list "where" #t)) (open-view "test.db" "test"))
-  (define/contract v2 (view/c #:fetch (list "fetch" #t (λ (v) (select v "b")))
-                              #:where (list "where" #t)) v1)
-  (fetch v2)
-  (where (select v1 "a") "a < 10"))
+                              #:select (list "select" #t))
+                              (open-view "test.db" "test"))
+  (define/contract v2 (view/c #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
+  (fetch v2))
