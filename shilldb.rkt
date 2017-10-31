@@ -8,7 +8,7 @@
                     [select #:mutable]))
 
 (define (build-view view)
-  (define (fetch v) (fetch-impl (shill-view-view v)))
+  (define (fetch v pre) (fetch-impl (shill-view-view (pre v))))
   (define (where v w) (build-view (where-impl (shill-view-view v) w)))
   (define (select v c) (build-view (select-impl (shill-view-view v) c)))
 
@@ -33,13 +33,11 @@
          (λ (view field-value)
            (((contract-projection accessor-contract) blame) field-value)))
        (λ (val)
-         (define fetch/c (make-fetch/c (assoc "fetch" full-details)))
-         (define where/c (make-where/c (assoc "where" full-details)))
-         (define select/c (make-select/c (assoc "select" full-details)))
+         (define fetch/c (make-fetch/c val ctc (assoc "fetch" full-details)))
+         (define where/c (make-where/c (assoc "where" full-details) full-details))
+         (define select/c (make-select/c (assoc "select" full-details) full-details))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
-         ;(define old-rights (and (rights? val) (get-rights val)))
-         ;(define rights (check-compatible node-
          (impersonate-struct val
                              shill-view-fetch (redirect-proc fetch/c)
                              set-shill-view-fetch! mutator-redirect-proc
@@ -63,55 +61,37 @@
        (λ (val)
          (((contract-projection inner-ctc) new-blame) val))))))
 
-(define (make-fetch/c details)
+(define (make-fetch/c view ctc details)
   (define (fetch-pre/c pre)
     (make-contract
      #:projection
      (λ (b)
        (λ (f)
-         (λ (v)
-           (f (pre v)))))))
+         (λ (v p)
+           (f view (λ (v) (p (with-contract b #:result ctc (pre v))))))))))
   (enhance-blame/c
    (cond [(= (length details) 2)
-          (->* (shill-view?) #:pre (second details) any)]
+          (->* (shill-view? procedure?) #:pre (second details) any)]
          [else
-          (and/c (->* (shill-view?) #:pre (second details) any) (fetch-pre/c (third details)))])
+          (and/c (->* (shill-view? procedure?) #:pre (second details) any) (fetch-pre/c (third details)))])
   "fetch"))
 
-(define (make-where/c details)
-  (define (where-pre/c pre)
-    (make-contract
-     #:projection
-     (λ (b)
-       (λ (f)
-         (λ (v w)
-           (f (pre v) w))))))
+(define (make-where/c details full-details)
   (define dl (length details))
   (enhance-blame/c
    (cond [(= dl 2)
           (->* (shill-view? string?) #:pre (second details) any)]
          [(= dl 3)
-          (and/c (->* (shill-view? string?) #:pre (second details) any) (where-pre/c (third details)))]
-         [(= dl 4)
-          (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (where-pre/c (third details)))])
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) any)])
   "where"))
   
-(define (make-select/c details)
-  (define (select-pre/c pre)
-    (make-contract
-     #:projection
-     (λ (b)
-       (λ (f)
-         (λ (v c)
-           (f (pre v) c))))))
+(define (make-select/c details full-details)
   (define dl (length details))
   (enhance-blame/c
    (cond [(= dl 2)
           (->* (shill-view? string?) #:pre (second details) any)]
          [(= dl 3)
-          (and/c (->* (shill-view? string?) #:pre (second details) any) (select-pre/c (third details)))]
-         [(= dl 4)
-          (and/c (->* (shill-view? (and/c string? (fourth details))) #:pre (second details) any) (select-pre/c (third details)))])
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) any)])
   "select"))
   
 (define (view/c
@@ -120,7 +100,7 @@
          #:select [s (list "select" #f)])
   (view-proxy (list f w s) #f))
 
-(define (fetch view) ((shill-view-fetch view) view))
+(define (fetch view) ((shill-view-fetch view) view values))
 
 (define (where view w) ((shill-view-where view) view w))
 
@@ -131,6 +111,9 @@
 
 (module+ test
   (define/contract v1 (view/c #:fetch (list "fetch" #t (λ (v) (where v "a < 10")))
-                              #:where (list "where" #t values (λ (w) (eq? w "a < 10")))) (open-view "test.db" "test"))
-  (define/contract v2 (view/c #:fetch (list "fetch" (λ (v) (where v "b < 80")))) v1)
-  (select v1 "a"))
+                              #:select (list "select" #t)
+                              #:where (list "where" #t)) (open-view "test.db" "test"))
+  (define/contract v2 (view/c #:fetch (list "fetch" #t (λ (v) (select v "b")))
+                              #:where (list "where" #t)) v1)
+  (fetch v2)
+  (where (select v1 "a") "a < 10"))
