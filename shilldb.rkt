@@ -178,21 +178,30 @@
          (λ (vp field-value)
            (((contract-projection accessor-contract) blame) field-value)))
        (λ (val)
-         (define join/c (make-join/c val (assoc "join" full-details)))
+         (define join/c (make-join/c val ctc (assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view pair" given "~e") val))
          (impersonate-struct val
                              view-pair-join (redirect-proc join/c)
                              set-view-pair-join! mutator-redirect-proc))))))
 
-(define (make-join/c vp details)
+(define (make-join/c vp ctc details)
+  (define (join-post/c post)
+    (make-contract
+     #:projection
+     (λ (b)
+       (λ (j)
+         (λ (v1 v2 jcond p)
+           (j v1 v2 jcond (λ (v) (p (post v)))))))))
   (define (get-view-contract v) ((shill-view-view-contract v) any/c))
   (define v1/c (get-view-contract (view-pair-v1 vp)))
   (define v2/c (get-view-contract (view-pair-v2 vp)))
   (define dl (length details))
   (enhance-blame/c
    (cond [(= dl 2)
-          (->* (shill-view? shill-view? string? procedure?) #:pre (second details) (and/c v1/c v2/c))])
+          (->* (shill-view? shill-view? string? procedure?) #:pre (second details) (and/c v1/c v2/c))]
+         [(= dl 3)
+          (and/c (join-post/c (third details)) (->* (shill-view? shill-view? string? procedure?) #:pre (second details) (and/c v1/c v2/c)))])
    "join"))
 
 (define (view/c
@@ -234,7 +243,10 @@
   (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
   (define/contract (f w v) (->i ([w integer?] [v (w) (view/c #:update (list "update" #t (λ (v) (where v (format "a = ~a" w)))))]) [result any/c])
     (update v "b = b + 1"))
-  (define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair v1 v2))
-  (fetch (join v1 v2 "")))
+  (define/contract vp (view-pair/c #:join (list "join" #t (λ (v) (where v "lhs_l = rhs_r")))) (build-view-pair (open-view "test.db" "v1") (open-view "test.db" "v2")))
+  (define/contract vp2 (view-pair/c #:join (list "join" #t (λ (v) (select v "lhs_l")))) vp)
+  (fetch (pjoin vp2 "")))
+  ;(define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair v1 v2))
+  ;(fetch (join v1 v2 "")))
   ;(define/contract vt ((shill-view-view-contract v2) any/c) (open-view "test.db" "test"))
   ;(fetch vt))
