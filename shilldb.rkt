@@ -44,7 +44,7 @@
          (define select/c (make-select/c (assoc "select" full-details) full-details))
          (define update/c (make-update/c val ctc (assoc "update" full-details)))
          (define pre-join/c (make-pre-join/c val ctc (assoc "join" full-details)))
-         (define view-contract/c (make-view-contract/c ctc))
+         (define view-contract/c (make-view-contract/c ctc (assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          (impersonate-struct val
@@ -91,15 +91,18 @@
           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (fetch-pre/c (third details)))])
   "fetch"))
 
-(define (make-view-contract/c ctc)
-  (define view-contract/c
+(define (make-view-contract/c ctc details)
+  (define (view-contract/c con)
     (make-contract
      #:projection
      (λ (b)
        (λ (vc)
          (λ (c)
-           (vc (and/c ctc c)))))))
-  view-contract/c)
+           (vc (and/c con c)))))))
+  (cond [(= (length details) 4)
+         (view-contract/c (fourth details))]
+        [else
+         (view-contract/c ctc)]))
 
 (define (make-where/c details full-details)
   (define dl (length details))
@@ -107,7 +110,9 @@
    (cond [(= dl 2)
           (->* (shill-view? string?) #:pre (second details) (view-proxy full-details #f))]
          [(= dl 3)
-          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (view-proxy full-details #f))])
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (view-proxy full-details #f))]
+         [(= dl 4)
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (fourth details))])
   "where"))
   
 (define (make-select/c details full-details)
@@ -116,7 +121,9 @@
    (cond [(= dl 2)
           (->* (shill-view? string?) #:pre (second details) (view-proxy full-details #f))]
          [(= dl 3)
-          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (view-proxy full-details #f))])
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (view-proxy full-details #f))]
+         [(= dl 4)
+          (->* (shill-view? (and/c string? (third details))) #:pre (second details) (fourth details))])
   "select"))
 
 (define (make-update/c view ctc details)
@@ -131,8 +138,10 @@
   (enhance-blame/c
    (cond [(= dl 2)
           (->* (shill-view? string? procedure?) (string?) #:pre (second details) any)]
-         [else
-          (and/c (->* (shill-view? string? procedure?) (string?) #:pre (second details) any) (update-pre/c (third details)))])
+         [(= dl 3)
+          (->* (shill-view? (and/c string? (third details)) procedure?) (string?) #:pre (second details) any)]
+         [(= dl 4)
+          (->* (shill-view? (and/c string? (third details)) procedure?) ((and/c string? (fourth details))) #:pre (second details) any)])
   "update"))
 
  (define (make-pre-join/c view ctc details)
@@ -143,12 +152,13 @@
         (λ (pj)
           (λ (v p)
             (pj view (λ (v) (p (with-contract b #:result ctc (pre v))))))))))
-    (enhance-blame/c
-   (cond [(= (length details) 2)
-          (->* (shill-view? procedure?) #:pre (second details) any)]
-         [else
-          (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))])
-  "join"))
+   (define dl (length details))
+   (enhance-blame/c
+    (cond [(= dl 2)
+           (->* (shill-view? procedure?) #:pre (second details) any)]
+          [else
+           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))])
+    "join"))
    
 
 (struct view-pair (v1
@@ -239,17 +249,18 @@
   (define/contract v1 (view/c ;#:fetch (list "fetch" #t)
                               #:select (list "select" #t)
                               #:update (list "update" #t)
-                              #:where (list "where" #t)
+                              #:where (list "where" #t any/c (view/c #:fetch (list "fetch" #t)))
                               #:join (list "join" #t))
     (open-view "test.db" "test"))
   (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
   (define/contract (f w v) (->i ([w integer?] [v (w) (view/c #:update (list "update" #t (λ (v) (where v (format "a = ~a" w)))))]) [result any/c])
     (update v "b = b + 1"))
   (define/contract vl (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t)) (open-view "test.db" "v1"))
-  (define/contract vr (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t)) (open-view "test.db" "v2"))
-  (define/contract vp (view-pair/c #:join (list "join" #t (λ (v) (where v "lhs_l = rhs_r")))) (build-view-pair vl vr)); (open-view "test.db" "v1") (open-view "test.db" "v2")))
+  (define/contract vr (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t values (view/c #:fetch (list "fetch" #t)))) (open-view "test.db" "v2"))
+  (define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair vl vr)); (open-view "test.db" "v1") (open-view "test.db" "v2")))
   (define/contract vp2 (view-pair/c #:join (list "join" #t (λ (v) (select v "lhs_l")))) vp)
-  (fetch (pjoin vp2 "")))
+  (where (pjoin vp "") "lhs_l < 10"))
+  ;(where (where v1 "a < 10") "a < 5"))
   ;(define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair v1 v2))
   ;(fetch (join v1 v2 "")))
   ;(define/contract vt ((shill-view-view-contract v2) any/c) (open-view "test.db" "test"))
