@@ -157,7 +157,12 @@
 
 (define (build-view-pair v1 v2)
   (define (pre-join v) ((shill-view-pre-join v) v values))
-  (define (join v1 v2 jcond post) (post (build-view (join-impl (shill-view-view (pre-join v1)) (shill-view-view (pre-join v2)) jcond))))
+  (define (join v1 v2 jcond post)
+    (define (get-view-contract v) ((shill-view-view-contract v) any/c))
+    (define v1/c (get-view-contract v1))
+    (define v2/c (get-view-contract v2))
+    (define/contract join-res (and/c v1/c v2/c) (build-view (join-impl (shill-view-view (pre-join v1)) (shill-view-view (pre-join v2)) jcond)))
+    (post join-res))
 
   (view-pair v1 v2 join))
 
@@ -193,15 +198,12 @@
        (λ (j)
          (λ (v1 v2 jcond p)
            (j v1 v2 jcond (λ (v) (p (post v)))))))))
-  (define (get-view-contract v) ((shill-view-view-contract v) any/c))
-  (define v1/c (get-view-contract (view-pair-v1 vp)))
-  (define v2/c (get-view-contract (view-pair-v2 vp)))
   (define dl (length details))
   (enhance-blame/c
    (cond [(= dl 2)
-          (->* (shill-view? shill-view? string? procedure?) #:pre (second details) (and/c v1/c v2/c))]
+          (->* (shill-view? shill-view? string? procedure?) #:pre (second details) shill-view?)]
          [(= dl 3)
-          (and/c (join-post/c (third details)) (->* (shill-view? shill-view? string? procedure?) #:pre (second details) (and/c v1/c v2/c)))])
+          (and/c (join-post/c (third details)) (->* (shill-view? shill-view? string? procedure?) #:pre (second details) shill-view?))])
    "join"))
 
 (define (view/c
@@ -243,7 +245,9 @@
   (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
   (define/contract (f w v) (->i ([w integer?] [v (w) (view/c #:update (list "update" #t (λ (v) (where v (format "a = ~a" w)))))]) [result any/c])
     (update v "b = b + 1"))
-  (define/contract vp (view-pair/c #:join (list "join" #t (λ (v) (where v "lhs_l = rhs_r")))) (build-view-pair (open-view "test.db" "v1") (open-view "test.db" "v2")))
+  (define/contract vl (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t)) (open-view "test.db" "v1"))
+  (define/contract vr (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t)) (open-view "test.db" "v2"))
+  (define/contract vp (view-pair/c #:join (list "join" #t (λ (v) (where v "lhs_l = rhs_r")))) (build-view-pair vl vr)); (open-view "test.db" "v1") (open-view "test.db" "v2")))
   (define/contract vp2 (view-pair/c #:join (list "join" #t (λ (v) (select v "lhs_l")))) vp)
   (fetch (pjoin vp2 "")))
   ;(define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair v1 v2))
