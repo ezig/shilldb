@@ -2,6 +2,18 @@
 
 (require "db_api_impl.rkt")
 
+(provide
+ view/c
+ view-pair/c
+ fetch
+ update
+ where
+ join
+ pjoin
+ select
+ open-view
+ build-view-pair)
+
 (struct shill-view (view
                     [fetch #:mutable]
                     [where #:mutable]
@@ -141,7 +153,9 @@
          [(= dl 3)
           (->* (shill-view? (and/c string? (third details)) procedure?) (string?) #:pre (second details) any)]
          [(= dl 4)
-          (->* (shill-view? (and/c string? (third details)) procedure?) ((and/c string? (fourth details))) #:pre (second details) any)])
+          (->* (shill-view? (and/c string? (third details)) procedure?) ((and/c string? (fourth details))) #:pre (second details) any)]
+         [(= dl 5)
+          (and/c (->* (shill-view? (and/c string? (third details)) procedure?) ((and/c string? (fourth details))) #:pre (second details) any) (update-pre/c (fifth details)))])
   "update"))
 
  (define (make-pre-join/c view ctc details)
@@ -156,8 +170,10 @@
    (enhance-blame/c
     (cond [(= dl 2)
            (->* (shill-view? procedure?) #:pre (second details) any)]
-          [else
-           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))])
+          [(= dl 3)
+           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))]
+          [(= dl 4)
+           (and/c (->* (shill-view? procedure?) #:pre (second details) (fourth details)) (pre-join-pre/c (third details)))])
     "join"))
    
 
@@ -246,22 +262,10 @@
   (build-view (make-view-impl filename table)))
 
 (module+ test
-  (define/contract v1 (view/c ;#:fetch (list "fetch" #t)
+  (define/contract v1 (view/c #:fetch (list "fetch" #t)
                               #:select (list "select" #t)
                               #:update (list "update" #t)
                               #:where (list "where" #t any/c (view/c #:fetch (list "fetch" #t)))
                               #:join (list "join" #t))
     (open-view "test.db" "test"))
-  (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
-  (define/contract (f w v) (->i ([w integer?] [v (w) (view/c #:update (list "update" #t (λ (v) (where v (format "a = ~a" w)))))]) [result any/c])
-    (update v "b = b + 1"))
-  (define/contract vl (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t)) (open-view "test.db" "v1"))
-  (define/contract vr (view/c #:fetch (list "fetch" #t) #:select (list "select" #t) #:where (list "where" #t) #:join (list "join" #t values (view/c #:fetch (list "fetch" #t)))) (open-view "test.db" "v2"))
-  (define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair vl vr)); (open-view "test.db" "v1") (open-view "test.db" "v2")))
-  (define/contract vp2 (view-pair/c #:join (list "join" #t (λ (v) (select v "lhs_l")))) vp)
-  (where (pjoin vp "") "lhs_l < 10"))
-  ;(where (where v1 "a < 10") "a < 5"))
-  ;(define/contract vp (view-pair/c #:join (list "join" #t)) (build-view-pair v1 v2))
-  ;(fetch (join v1 v2 "")))
-  ;(define/contract vt ((shill-view-view-contract v2) any/c) (open-view "test.db" "test"))
-  ;(fetch vt))
+  (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1))
