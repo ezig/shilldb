@@ -8,6 +8,15 @@
          "sqlite3_db_conn.rkt"
          "db_conn.rkt")
 
+(define (get-fk-infos tablename cinfo)
+  (let* ([fk-query (format "PRAGMA foreign_key_list(~a)" tablename)]
+         [fk-rows (connect-and-exec cinfo (λ (c) (query-rows c fk-query)))])
+    (map (λ (r)
+           (let ([table (vector-ref r 2)]
+                 [fk-col (vector-ref r 3)]
+                 [ref-col (vector-ref r 4)])
+             (fk-constraint table ref-col fk-col))) fk-rows)))
+
 (define (make-view-impl filename tablename)
   (let* ([cinfo (sqlite3-db-conn filename)]
          ; Fix string-append hack for tableinfo to avoid injection attacks
@@ -23,7 +32,8 @@
          [type-map (make-hash (map (λ (col) (cons (column-name col)
                                        (parse-type cinfo (column-type col)))) columns))]
          [column-names (map (λ (col) (column-name col)) columns)]
-         [t (table tablename type-map column-names column-hash)])
+         [fks (get-fk-infos tablename cinfo)]
+         [t (table tablename type-map column-names column-hash fks)])
     (view cinfo t column-names empty-where '() column-names #t #t)))
 
 ; check if columns are within the views as a contract

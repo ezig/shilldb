@@ -14,7 +14,8 @@
 (provide (struct-out ast))
 
 (struct column (cid name type notnull default primary-key))
-(struct table (name type-map colnames columns))
+(define-struct fk-constraint (table ref-col fk-col))
+(struct table (name type-map colnames columns fks))
 (struct join-table (type-map colnames views prefixes))
 (struct in-cond (column subv neg))
 (struct view (conn-info table colnames where-q ins updatable insertable deletable))
