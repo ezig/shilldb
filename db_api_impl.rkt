@@ -10,7 +10,8 @@
 
 (define (get-fk-infos tablename cinfo)
   (let* ([fk-query (format "PRAGMA foreign_key_list(~a)" tablename)]
-         [fk-rows (connect-and-exec cinfo (λ (c) (query-rows c fk-query)))])
+         [fk-rows (with-handlers ([exn:fail? (λ (e) null)])
+                    (connect-and-exec cinfo (λ (c) (query-rows c fk-query))))])
     (map (λ (r)
            (let ([table (vector-ref r 2)]
                  [fk-col (vector-ref r 3)]

@@ -20,7 +20,7 @@
                     [select #:mutable]
                     [update #:mutable]
                     [pre-join #:mutable]
-                    [view-contract #:mutable]))
+                    [get-join-contracts #:mutable]))
 
 (define (build-view view)
   (define (fetch v pre) (fetch-impl (shill-view-view (pre v))))
@@ -28,9 +28,9 @@
   (define (select v c) (build-view (select-impl (shill-view-view v) c)))
   (define (update v query pre [where ""]) (update-impl (shill-view-view (pre v)) query where))
   (define (pre-join v pre) (pre v))
-  (define (view-contract ctc) ctc)
+  (define (gjc out-ctc in-ctc) (values out-ctc in-ctc))
 
-  (shill-view view fetch where select update pre-join view-contract))
+  (shill-view view fetch where select update pre-join gjc))
 
 (define (mutator-redirect-proc i v) v)
 
@@ -56,7 +56,7 @@
          (define select/c (make-select/c (assoc "select" full-details) full-details))
          (define update/c (make-update/c val ctc (assoc "update" full-details)))
          (define pre-join/c (make-pre-join/c val ctc (assoc "join" full-details)))
-         (define view-contract/c (make-view-contract/c ctc (assoc "join" full-details)))
+         (define view-contract/c (make-get-join-contracts/c ctc (assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          (impersonate-struct val
@@ -70,8 +70,8 @@
                              set-shill-view-update! mutator-redirect-proc
                              shill-view-pre-join (redirect-proc pre-join/c)
                              set-shill-view-pre-join! mutator-redirect-proc
-                             shill-view-view-contract (redirect-proc view-contract/c)
-                             set-shill-view-view-contract! mutator-redirect-proc))))))
+                             shill-view-get-join-contracts (redirect-proc view-contract/c)
+                             set-shill-view-get-join-contracts! mutator-redirect-proc))))))
 
 (struct enhance-blame/c (ctc msg)
   #:property prop:contract
@@ -103,18 +103,21 @@
           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (fetch-pre/c (third details)))])
   "fetch"))
 
-(define (make-view-contract/c ctc details)
-  (define (view-contract/c con)
+(define (make-get-join-contracts/c ctc details)
+  (define (view-contract/c in-ctc out-ctc)
     (make-contract
      #:projection
      (λ (b)
        (λ (vc)
-         (λ (c)
-           (vc (and/c con c)))))))
-  (cond [(= (length details) 4)
-         (view-contract/c (fourth details))]
+         (λ (out/c in/c)
+           (vc (and/c out-ctc out/c) (λ (v) (and (in-ctc v) (in/c v)))))))))
+  (define dl (length details))
+  (cond [(= dl 4)
+         (view-contract/c #t (fourth details))]
+        [(= dl 5)
+         (view-contract/c (fifth details) (fourth details))]
         [else
-         (view-contract/c ctc)]))
+         (view-contract/c #t ctc)]))
 
 (define (make-where/c details full-details)
   (define dl (length details))
@@ -172,7 +175,7 @@
            (->* (shill-view? procedure?) #:pre (second details) any)]
           [(= dl 3)
            (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))]
-          [(= dl 4)
+          [(>= dl 4)
            (and/c (->* (shill-view? procedure?) #:pre (second details) (fourth details)) (pre-join-pre/c (third details)))])
     "join"))
    
@@ -182,13 +185,24 @@
                    [join #:mutable]))
 
 (define (build-view-pair v1 v2)
+  (define (validate-join v1-in/c v2-in/c)
+    (λ (v1 v2 jcond)
+      (unless (v1-in/c (cons v2 jcond))
+        (raise-blame-error 'FIXME (cons v2 jcond) '(expected "valid join" given "~e") (cons v2 jcond)))
+      (unless (v2-in/c (cons v1 jcond))
+        (raise-blame-error 'FIXME (cons v1 jcond) '(expected "valid join" given "~e") (cons v1 jcond)))))
   (define (pre-join v) ((shill-view-pre-join v) v values))
   (define (join v1 v2 jcond post)
-    (define (get-view-contract v) ((shill-view-view-contract v) any/c))
-    (define v1/c (get-view-contract v1))
-    (define v2/c (get-view-contract v2))
-    (define/contract join-res (and/c v1/c v2/c) (build-view (join-impl (shill-view-view (pre-join v1)) (shill-view-view (pre-join v2)) jcond)))
-    (post join-res))
+    (define (get-join-contracts v) ((shill-view-get-join-contracts v) any/c values))
+    (let-values ([(v1-out/c v1-in/c) (get-join-contracts v1)]
+                 [(v2-out/c v2-in/c) (get-join-contracts v2)])
+      (begin
+        (displayln v1-in/c)
+        (v1-in/c (cons v2 jcond))
+        ((validate-join v1-in/c v2-in/c) v1 v2 jcond)
+        (define/contract join-res (and/c v1-out/c v2-out/c)
+          (post (build-view (join-impl (shill-view-view (pre-join v1)) (shill-view-view (pre-join v2)) jcond))))
+        join-res)))
 
   (view-pair v1 v2 join))
 
@@ -262,10 +276,12 @@
   (build-view (make-view-impl filename table)))
 
 (module+ test
-  (define/contract v1 (view/c #:fetch (list "fetch" #t)
-                              #:select (list "select" #t)
-                              #:update (list "update" #t)
-                              #:where (list "where" #t any/c (view/c #:fetch (list "fetch" #t)))
-                              #:join (list "join" #t))
-    (open-view "test.db" "test"))
-  (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1))
+  (define/contract v1 (view/c #:fetch (list "fetch" #t) #:join (list "join" #t values any/c (λ (v) (displayln v)))) (open-view "test.db" "test"))
+  (fetch (join v1 v1 "")))
+;  (define/contract v1 (view/c #:fetch (list "fetch" #t)
+;                              #:select (list "select" #t)
+;                              #:update (list "update" #t)
+;                              #:where (list "where" #t any/c (view/c #:fetch (list "fetch" #t)))
+;                              #:join (list "join" #t))
+;    (open-view "test.db" "test"))
+;  (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1))
