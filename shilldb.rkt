@@ -1,7 +1,18 @@
 #lang racket
 
-(require "db_api_impl.rkt")
-
+(require "db_api_impl.rkt"
+         (only-in "sql_parse.rkt"
+                  parse-where)
+         (only-in "util.rkt"
+                  hash-union
+                  view-get-fks
+                  view-get-type-map
+                  view-get-tname-for-col
+                  ast
+                  fk-constraint
+                  [cond condexp]
+                  atom))
+         
 (provide
  view/c
  view-pair/c
@@ -275,9 +286,26 @@
 (define (open-view filename table)
   (build-view (make-view-impl filename table)))
 
+(define (fk-pred svthis svthat jcond)
+  (let* ([vthis (shill-view-view svthis)]
+         [vthat (shill-view-view svthat)]
+         [tm (hash-union (view-get-type-map vthis) (view-get-type-map vthat))])
+    (match (parse-where jcond tm)
+      [(ast 'where (condexp '= (atom _ #t val1) (atom _ #t val2)))
+       (if (and (hash-has-key? tm val1) (hash-has-key? tm val2))
+           (let ([fks (view-get-fks vthat)])
+             (define (validate-fks ref-col fk-col)
+               (integer? (index-of fks (fk-constraint (view-get-tname-for-col vthis ref-col) ref-col fk-col))))
+             (or (validate-fks val1 val2) (validate-fks val2 val1)))
+           #f)]
+      [_ #f])))
+
 (module+ test
   (define/contract v1 (view/c #:fetch (list "fetch" #t) #:join (list "join" #t values any/c (λ (v) (displayln v)))) (open-view "test.db" "test"))
-  (fetch (join v1 v1 "")))
+  (define va (open-view "test.db" "artist"))
+  (define vt (open-view "test.db" "track"))
+  (fk-pred va vt "trackartist = trackartist"))
+  ;  (fetch (join v1 v1 "")))
 ;  (define/contract v1 (view/c #:fetch (list "fetch" #t)
 ;                              #:select (list "select" #t)
 ;                              #:update (list "update" #t)

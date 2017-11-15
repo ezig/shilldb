@@ -14,7 +14,7 @@
 (provide (struct-out ast))
 
 (struct column (cid name type notnull default primary-key))
-(define-struct fk-constraint (table ref-col fk-col))
+(define-struct fk-constraint (table ref-col fk-col) #:transparent)
 (struct table (name type-map colnames columns fks))
 (struct join-table (type-map colnames views prefixes))
 (struct in-cond (column subv neg))
@@ -27,6 +27,19 @@
 (struct ast (clause-type root))
 
 ; View utilties
+(define (view-get-fks v)
+  (match (view-table v)
+    [(table _ _ _ _ fks) fks]
+    [(join-table _ _ vs _) (append (map view-get-fks vs))]))
+
+; Assumes that all columns have unique names
+(define (view-get-tname-for-col v col)
+  (match (view-table v)
+    [(table name _ colnames _ _)
+     (if (member col colnames) name #f)]
+    [(join-table _ _ views _)
+     (first (filter values (map view-get-tname-for-col view)))]))
+
 (define (valid-default v colname)
     (let* ([col (hash-ref (table-columns (view-table v)) colname)]
           [default-value-null? (sql-null? (column-default col))]
@@ -71,6 +84,14 @@
       (aux (ast-root ast))))
 
 ; General utilities
+(define (hash-union h1 h2)
+  (let* ([h3 (make-hash)]
+         [insert-h3 (λ (k v) (hash-set! h3 k v))])
+    (begin
+      (hash-for-each h1 insert-h3)
+      (hash-for-each h2 insert-h3)
+      h3)))
+
 (define (zip l1 l2) (map cons l1 l2))
 
 (define (list-unique? l)
