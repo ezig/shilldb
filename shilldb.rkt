@@ -82,7 +82,8 @@
                              shill-view-pre-join (redirect-proc pre-join/c)
                              set-shill-view-pre-join! mutator-redirect-proc
                              shill-view-get-join-contracts (redirect-proc view-contract/c)
-                             set-shill-view-get-join-contracts! mutator-redirect-proc))))))
+                             set-shill-view-get-join-contracts! mutator-redirect-proc
+                             impersonator-prop:contracted ctc))))))
 
 (struct enhance-blame/c (ctc msg)
   #:property prop:contract
@@ -124,9 +125,9 @@
            (vc (and/c out-ctc out/c) (λ (v jc) (and (in-ctc v jc) (in/c v jc)))))))))
   (define dl (length details))
   (cond [(= dl 4)
-         (view-contract/c (λ (v jc) #t) (fourth details))]
+         (view-contract/c (fourth details) ctc)]
         [(= dl 5)
-         (view-contract/c (fifth details) (fourth details))]
+         (view-contract/c (fourth details) (fifth details))]
         [else
          (view-contract/c (λ (v jc) #t) ctc)]))
 
@@ -184,10 +185,8 @@
    (enhance-blame/c
     (cond [(= dl 2)
            (->* (shill-view? procedure?) #:pre (second details) any)]
-          [(= dl 3)
-           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))]
-          [(>= dl 4)
-           (and/c (->* (shill-view? procedure?) #:pre (second details) (fourth details)) (pre-join-pre/c (third details)))])
+          [(>= dl 3)
+           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))])
     "join"))
    
 
@@ -207,9 +206,11 @@
                                 (λ (jc) (v1-in/c v2 jc))
                                 (λ (jc) (v2-in/c v1 jc)))]                                               
           [post procedure?])
-         [result (and/c v1-out/c v2-out/c)])
-    ; fix intermediate contract before the post condition is applied?
-    (post (build-view (join-impl (shill-view-view (pre-join v1)) (shill-view-view (pre-join v2)) jcond))))
+         [result any/c])
+    (define/contract v-intermediate
+      (and/c v1-out/c v2-out/c)
+      (build-view (join-impl (shill-view-view (pre-join v1)) (shill-view-view (pre-join v2)) jcond)))
+    (post v-intermediate))
   (view-pair v1 v2 join))
 
 (struct view-pair-proxy (full-details param)
@@ -273,7 +274,7 @@
 (define (update v query [where ""]) ((shill-view-update v) v query values where))
 
 (define (join v1 v2 jcond)
-  (define/contract vp (view-pair/c #:join (list "join" #t (λ (v) (where v "lhs_a < 10")))) (build-view-pair v1 v2))
+  (define/contract vp (view-pair/c #:join (list "join" #t (λ (v) (select v "lhs_a")))) (build-view-pair v1 v2))
   (pjoin vp jcond))
   
 (define (pjoin vp jcond) ((view-pair-join vp) (view-pair-v1 vp) (view-pair-v2 vp) jcond values))
@@ -305,12 +306,15 @@
 ; (view/c (fetch/p (where "x < 10"))
 
   ;  (fetch (join v1 v1 "")))
-  (define/contract v1 (view/c #:fetch (list "fetch" #t)
+  (define/contract v1 (view/c ;#:fetch (list "fetch" #t (λ (v) (select v "a")))
                               #:select (list "select" #t)
                               #:update (list "update" #t)
                               ;#:where (list "where" #t)
-                              #:join (list "join" #t (λ (v) v) any/c (λ (v jc) (string=? jc "a"))))
+                              #:join (list "join" #t (λ (v) v) (λ (v jc) (string=? jc ""))))
                               ;#:join (list "join" #t (λ (v) v) (λ (p) (displayln p))))
     (open-view "test.db" "test"))
-  (define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
+  ;(define/contract v2 (view/c #:fetch (list "fetch" #t (λ (v) (select v "b"))) #:where (list "where" #t)) v1)
+  ;(define/contract x (value-contract v2) (open-view "test.db" "test"))
+  ;(define/contract v2 (view/c #:join (list "join" #t (λ (v) (where v "a < 2"))) #:fetch (list "fetch" #t (λ (v) (select v "b")))) v1)
+  ;(fetch v2))
   (join v1 v1 ""))
