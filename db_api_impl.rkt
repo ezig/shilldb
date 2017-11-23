@@ -70,12 +70,12 @@
          [type-map (make-hash)])
     (begin
       (hash-for-each tm1 (λ (k v)
-                           (hash-set! type-map (format "~a_~a" (first prefix) k) v)))
+                           (hash-set! type-map (format "~a" k) v))) ;(format "~a_~a" (first prefix) k) v)))
       (hash-for-each tm2 (λ (k v)
-                           (hash-set! type-map (format "~a_~a" (second prefix) k) v)))
+                           (hash-set! type-map (format "~a" k) v))) ;(format "~a_~a" (second prefix) k) v)))
       (let* ([join-q (parse-where jcond type-map)]
-             [v1-colnames (map (λ (c) (format "~a_~a" (first prefix) c)) (view-get-colnames v1))]
-             [v2-colnames (map (λ (c) (format "~a_~a" (second prefix) c)) (view-get-colnames v2))]
+             [v1-colnames (view-get-colnames v1)] ;(map (λ (c) (format "~a_~a" (first prefix) c)) (view-get-colnames v1))]
+             [v2-colnames (view-get-colnames v2)] ;(map (λ (c) (format "~a_~a" (second prefix) c)) (view-get-colnames v2))]
              [colnames (append v1-colnames v2-colnames)]
              [jtable (join-table type-map colnames (list v1 v2) prefix)])
         (view cinfo jtable colnames join-q '() null #f #f)))))

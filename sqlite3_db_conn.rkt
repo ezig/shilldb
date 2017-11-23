@@ -107,7 +107,8 @@
     (let* ([colnames (view-colnames v)]
            [colnames (if (null? col-prefix)
                          colnames
-                         (map (λ (c) (format "~a as ~a_~a" c col-prefix c)) colnames))]
+                         colnames)]
+                         ;(map (λ (c) (format "~a as  ~a_~a" c col-prefix c)) colnames))]
            [colnames (string-join colnames ",")]
            [table-string (sqlite3-table-string (view-table v))]
            [where-q (where-clause-string v)])
