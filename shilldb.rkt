@@ -108,6 +108,9 @@
   "fetch"))
 
 (define (make-get-join-details/c ctc details)
+  (define (compose-pres p1 p2)
+    (λ (v1 v2 jc)
+      (and (p1 v1 v2 jc) (p2 v1 v2 jc))))
   (define (compose-posts inner outer)
     (λ (v1 v2 jc)
       (let ([p1 (inner v1 v2 jc)]
@@ -122,7 +125,7 @@
      (λ (b)
        (λ (gjd)
          (λ (new-pre new-post new-out-ctc)
-           (gjd (and pre new-pre)
+           (gjd (compose-pres pre new-pre)
                 (compose-posts post new-post)
                 (compose-ctcs out-ctc new-out-ctc)))))))
   (define dl (length details))
@@ -134,7 +137,7 @@
         [(= dl 5)
          (join-details/c (third details) (fourth details) (fifth details))]
         [else
-         (join-details/c (const-three-arg values) (const-three-arg values) (const-three-arg any/c))]))
+         (join-details/c (const-three-arg #t) (const-three-arg values) (const-three-arg any/c))]))
 
 (define (make-where/c details full-details)
   (define dl (length details))
@@ -256,8 +259,8 @@
   (define top (view/c #:fetch (list "fetch" #t)
                               #:select (list "select" #t)
                               #:update (list "update" #t)
-                              #:where (list "where" #t))
-                              #:join (list "join" #t))
+                              #:where (list "where" #t)
+                              #:join (list "join" #t)))
   (define/contract v1 (view/c #:fetch (list "fetch" #t)
                               #:select (list "select" #t)
                               #:update (list "update" #t)
