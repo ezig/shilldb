@@ -34,7 +34,7 @@
   (define (where v w) (build-view (where-impl (shill-view-view v) w)))
   (define (select v c) (build-view (select-impl (shill-view-view v) c)))
   (define (update v query pre [where ""]) (update-impl (shill-view-view (pre v)) query where))
-  (define (get-join-details this-pre that-pre post out-ctc) (values this-pre that-pre post out-ctc))
+  (define (get-join-details pre-fun post-fun out-ctc-fun) (values pre-fun post-fun out-ctc-fun))
 
   (shill-view view fetch where select update get-join-details))
 
@@ -108,37 +108,33 @@
   "fetch"))
 
 (define (make-get-join-details/c ctc details)
-  (define (compose-transforms inner outer)
+  (define (compose-posts inner outer)
     (λ (v1 v2 jc)
-      (let ([innerf (inner v1 v2 jc)])
-        (if innerf
-            (let ([outerf (outer v1 v2 jc)])
-              (if outerf
-                  (λ (v) (outerf (innerf v)))
-                  #f))
-            #f))))
-  (define (join-details/c this-pre that-pre post out-ctc)
+      (let ([p1 (inner v1 v2 jc)]
+            [p2 (outer v1 v2 jc)])
+        (λ (v) (p2 (p1 v))))))
+  (define (compose-ctcs cf1 cf2)
+    (λ (v1 v2 jc)
+      (and/c (cf1 v1 v2 jc) (cf2 v1 v2 jc))))
+  (define (join-details/c pre post out-ctc)
     (make-contract
      #:projection
      (λ (b)
        (λ (gjd)
-         (λ (new-this-pre new-that-pre new-post new-out-ctc)
-           (gjd (compose-transforms this-pre new-this-pre)
-                (compose-transforms that-pre new-that-pre)
-                (compose-transforms post new-post)
-                (and/c new-out-ctc out-ctc)))))))
+         (λ (new-pre new-post new-out-ctc)
+           (gjd (and pre new-pre)
+                (compose-posts post new-post)
+                (compose-ctcs out-ctc new-out-ctc)))))))
   (define dl (length details))
-  (define id-transform (λ (v1 v2 jc) values))
+  (define (const-three-arg v) (λ (x y z) v))
   (cond [(= dl 3)
-         (join-details/c (third details) id-transform id-transform any/c)]
+         (join-details/c (third details) (const-three-arg values) (const-three-arg any/c))]
         [(= dl 4)
-         (join-details/c (third details) (fourth details) id-transform any/c)]
+         (join-details/c (third details) (fourth details) (const-three-arg any/c))]
         [(= dl 5)
-         (join-details/c (third details) (fourth details) (fifth details) any/c)]
-        [(= dl 6)
-         (join-details/c (third details) (fourth details) (fifth details) (sixth details))]
+         (join-details/c (third details) (fourth details) (fifth details))]
         [else
-         (join-details/c id-transform id-transform id-transform any/c)]))
+         (join-details/c (const-three-arg values) (const-three-arg values) (const-three-arg any/c))]))
 
 (define (make-where/c details full-details)
   (define dl (length details))
@@ -217,27 +213,18 @@
 
 (define (join v1 v2 jcond)
   (define id-transform (λ (v1 v2 jc) values))
-  (define (get-join-details v) ((shill-view-get-join-details v) id-transform id-transform id-transform any/c))
-  (define-values (v1-this-pre-f v1-that-pre-f v1-post-f v1-out/c) (get-join-details v1))
-  (define-values (v2-this-pre-f v2-that-pre-f v2-post-f v2-out/c) (get-join-details v2))
-  (define (apply-pre v this that)
-    (if this
-        (if that
-            (that (this v))
-            #f)
-        #f))
-  (let* ([v1-this-pre (v1-this-pre-f v1 v2 jcond)]
-         [v1-that-pre (v1-that-pre-f v1 v2 jcond)]
-         [v1-post (v1-post-f v1 v2 jcond)]
-         [v2-this-pre (v2-this-pre-f v1 v2 jcond)]
-         [v2-that-pre (v2-that-pre-f v1 v2 jcond)]
-         [v2-post (v2-post-f v1 v2 jcond)]
-         [v1-pre (apply-pre v1 v1-this-pre v2-that-pre)]
-         [v2-pre (apply-pre v2 v2-this-pre v1-that-pre)])
-    (define/contract intermediate (and/c v1-out/c v2-out/c) (build-view (join-impl (shill-view-view v1-pre) (shill-view-view v2-pre) jcond)))
+  (define (get-join-details v) ((shill-view-get-join-details v) (λ (v1 v2 jc) #t) (λ (v1 v2 jc) values) (λ (v1 v2 jc) any/c)))
+  (define (get-pre-post-out v)
+    (match (map (λ (f) (apply f (list v1 v2 jcond))) (call-with-values (λ () (get-join-details v)) list))
+      [(list pre post out) (values pre post out)]))
+  (let-values ([(v1-pre v1-post v1-out/c) (get-pre-post-out v1)]
+               [(v2-pre v2-post v2-out/c) (get-pre-post-out v2)])
+    (define/contract (build-intermediate v1 v2)
+      (-> shill-view? shill-view? (and/c v1-out/c v2-out/c))
+      (build-view (join-impl (shill-view-view v1) (shill-view-view v2) jcond)))
     (if (and v1-pre v2-pre)
-          (v2-post (v1-post intermediate))
-        #f)))
+        (v2-post (v1-post (build-intermediate v1 v2)))
+        #f))); FIXME
 
 (define (open-view filename table)
   (build-view (make-view-impl filename table)))
@@ -269,13 +256,13 @@
   (define top (view/c #:fetch (list "fetch" #t)
                               #:select (list "select" #t)
                               #:update (list "update" #t)
-                              #:where (list "where" #t)
-                              #:join (list "join" #t)))
+                              #:where (list "where" #t))
+                              #:join (list "join" #t))
   (define/contract v1 (view/c #:fetch (list "fetch" #t)
                               #:select (list "select" #t)
                               #:update (list "update" #t)
                               #:where (list "where" #t)
-                              #:join (list "join" #t (λ (x y z) #f) (λ (x y z) (λ (v) (where v "name = 'Ezra'")))))
+                              #:join (list "join" #t (λ (x y z) #f) (λ (x y z) (λ (v) (where v "a > grade")))))
                               ;#:join (list "join" #t (λ (v) v) (λ (p) (displayln p))))
     (open-view "test.db" "test"))
   (define/contract v2 top (open-view "test.db" "students"))
