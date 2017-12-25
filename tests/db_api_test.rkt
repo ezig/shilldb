@@ -3,7 +3,15 @@
 (require db
          rackunit
          rackunit/text-ui
-         "db_api.rkt")
+         (only-in "../racket/private/api/db_api_impl.rkt"
+                  [where-impl where]
+                  [update-impl update]
+                  [insert-impl insert]
+                  [delete-impl delete]
+                  [fetch-impl fetch]
+                  [select-impl select]
+                  [join-impl join]
+                  [make-view-impl make-view]))
 
 (define db-path "db_api_test.db")
 (define test-user-schema "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
@@ -27,8 +35,8 @@
 (define (test-exec testfun)
   (around
     (create-db)
-    (define/contract v
-        (dbview/c select/p update/p delete/p insert/p where/p fetch/p) (open-dbview db-path "users"))
+    (define v
+        (make-view db-path "users"))
     (testfun v)
     (cleanup-db)))
 
