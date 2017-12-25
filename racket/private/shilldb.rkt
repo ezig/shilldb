@@ -1,6 +1,7 @@
 #lang racket
 
 (require "api/db_api_impl.rkt"
+         "shilldb-utils.rkt"
          (only-in "api/sql_parse.rkt"
                   parse-where)
          (only-in "api/util.rkt"
@@ -39,11 +40,6 @@
 
   (shill-view view fetch where select update get-join-details))
 
-(define (mutator-redirect-proc i v) v)
-
-(define (list-assoc key full-details)
-    (define in-list? (assoc key full-details))
-    (if in-list? in-list? (list key #f)))
 
 (struct view-proxy (full-details param)
   #:property prop:contract
@@ -79,23 +75,8 @@
                              shill-view-update (redirect-proc update/c)
                              set-shill-view-update! mutator-redirect-proc
                              shill-view-get-join-details (redirect-proc get-join-details/c)
-                             set-shill-view-get-join-details! mutator-redirect-proc
+                             set-shill-view-get-join-details! mutator-redirect-proc                            
                              impersonator-prop:contracted ctc))))))
-
-(struct enhance-blame/c (ctc msg)
-  #:property prop:contract
-  (build-contract-property
-   #:projection
-   (λ (ctc)
-     (define inner-ctc (enhance-blame/c-ctc ctc))
-     (define msg (enhance-blame/c-msg ctc))
-     (λ (blame)
-       (define new-blame 
-         (blame-add-context 
-          blame 
-          (string-append msg " (insufficient privileges for " msg "!) in")))
-       (λ (val)
-         (((contract-projection inner-ctc) new-blame) val))))))
 
 (define (make-fetch/c view ctc details)
   (define (fetch-pre/c pre)

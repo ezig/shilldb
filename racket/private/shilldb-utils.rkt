@@ -1,49 +1,29 @@
 #lang racket
 
+(provide enhance-blame/c
+         list-assoc
+         mutator-redirect-proc
+         prop:rights
+         rights?
+         get-rights)
 
-#|
+(struct enhance-blame/c (ctc msg)
+  #:property prop:contract
+  (build-contract-property
+   #:projection
+   (λ (ctc)
+     (define inner-ctc (enhance-blame/c-ctc ctc))
+     (define msg (enhance-blame/c-msg ctc))
+     (λ (blame)
+       (define new-blame 
+         (blame-add-context 
+          blame 
+          (string-append msg " (insufficient privileges for " msg "!) in")))
+       (λ (val)
+         (((contract-projection inner-ctc) new-blame) val))))))
 
-suggested form for view/c
+(define (mutator-redirect-proc i v) v)
 
-(view/c [#:fetch expr ...] #:update)
-
-|#
-
-(require (for-syntax syntax/parse)
-         (except-in "shilldb.rkt" view/c))
-
-
-(begin-for-syntax
- 
- (define-syntax-class privilege-name
-   #:description "primitive privilege"
-   (pattern #:fetch)
-   (pattern #:update))
-
-
- (define-syntax-class privilege
-   #:description "privilege"
-   (pattern name:privilege-name
-            #:with (modifier ...) '())
-   (pattern [name:privilege-name modifier ...])))
-
-
-(define-syntax (privilege-parse stx)
-  (syntax-parse stx
-    [(_ p:privilege)
-     #`(list #,(keyword->string (syntax->datum #`p.name)) #t p.modifier ...)]))
-  
-
-(define-syntax (view/c stx)
-  (syntax-parse stx
-    [(_ p:privilege ...)
-     #'(view-proxy (list (privilege-parse p) ...) #f)]))
-
-
-  (view/c [#:fetch #t #t] #:update)
-
-
-            
-
-
-  
+(define (list-assoc key full-details)
+    (define in-list? (assoc key full-details))
+    (if in-list? in-list? (list key #f)))
