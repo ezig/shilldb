@@ -17,10 +17,11 @@
   [parse-type dbconn type-string])
 
 (define (connect-and-exec-with-trigger cinfo v trig-type fun)
-  ; XXX: fix error propagation
   (let ([tname (install-view-trigger cinfo v trig-type)]
-        [res (with-handlers ([exn:fail? (lambda (e) e)])
+        [res (with-handlers ([exn:fail:sql? (lambda (e) e)])
                (connect-and-exec cinfo fun))])
     (begin
       (remove-trigger cinfo tname)
-      res)))
+      (if (exn:fail:sql? res)
+          (error trig-type "failed due to view constraint violation")
+          res))))
