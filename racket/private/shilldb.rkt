@@ -1,9 +1,9 @@
 #lang racket
 
-(require "db_api_impl.rkt"
-         (only-in "sql_parse.rkt"
+(require "api/db_api_impl.rkt"
+         (only-in "api/sql_parse.rkt"
                   parse-where)
-         (only-in "util.rkt"
+         (only-in "api/util.rkt"
                   hash-union
                   view-get-fks
                   view-get-type-map
