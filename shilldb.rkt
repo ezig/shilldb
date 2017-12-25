@@ -14,6 +14,7 @@
                   atom))
          
 (provide
+ view-proxy
  view/c
  fetch
  update
@@ -40,6 +41,10 @@
 
 (define (mutator-redirect-proc i v) v)
 
+(define (list-assoc key full-details)
+    (define in-list? (assoc key full-details))
+    (if in-list? in-list? (list key #f)))
+
 (struct view-proxy (full-details param)
   #:property prop:contract
   (build-contract-property
@@ -57,11 +62,11 @@
          (λ (view field-value)
            (((contract-projection accessor-contract) blame) field-value)))
        (λ (val)
-         (define fetch/c (make-fetch/c val ctc (assoc "fetch" full-details)))
-         (define where/c (make-where/c (assoc "where" full-details) full-details))
-         (define select/c (make-select/c (assoc "select" full-details) full-details))
-         (define update/c (make-update/c val ctc (assoc "update" full-details)))
-         (define get-join-details/c (make-get-join-details/c ctc (assoc "join" full-details)))
+         (define fetch/c (make-fetch/c val ctc (list-assoc "fetch" full-details)))
+         (define where/c (make-where/c (list-assoc "where" full-details) full-details))
+         (define select/c (make-select/c (list-assoc "select" full-details) full-details))
+         (define update/c (make-update/c val ctc (list-assoc "update" full-details)))
+         (define get-join-details/c (make-get-join-details/c ctc (list-assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          (impersonate-struct val
