@@ -3,6 +3,7 @@
 (require db
          rackunit
          rackunit/text-ui
+         "test-utils.rkt"
          (only-in "../racket/private/api/db_api_impl.rkt"
                   [where-impl where]
                   [update-impl update]
@@ -40,16 +41,8 @@
     (testfun v)
     (cleanup-db)))
 
-(define (raised-exn? fun)
-  (with-handlers ([exn? (lambda (e) #t)])
-    (begin
-      (fun)
-      #f)))
-
-(define (test-exec-expect-exn testfun)
-  (if (raised-exn? (lambda () (test-exec testfun)))
-      null
-      (error "Expected exception")))
+(define (test-exec-expect-exn testfun error-msg)
+  (check-fail (test-exec testfun) error-msg))
 
 (define (fetch-rows v)
   (cdr (fetch v)))
@@ -76,15 +69,20 @@
     "Tests for insert"
     (test-case
       "Inserting invalid column name fails"
-      (test-exec-expect-exn (lambda (v) (insert v "FAIL" '("Ezra"))))
+      (test-exec-expect-exn
+       (lambda (v) (insert v "FAIL" '("Ezra")))
+       "invalid column names")
       )
     (test-case
       "Inserting with required row missing fails"
-      (test-exec-expect-exn (lambda (v) (insert v "" '())))
+      (test-exec-expect-exn
+       (lambda (v) (insert v "" '()))
+       "invalid defaults")
       )
     (test-case
       "Insert provided vals must match number of given cols"
-      (test-exec-expect-exn (lambda (v) (insert v "name" '(1 "Ezra"))))
+      (test-exec-expect-exn (lambda (v) (insert v "name" '(1 "Ezra")))
+                            "contract violation")
       )
     (test-case
       "Insert into empty db succeeds"
@@ -107,7 +105,8 @@
     (test-case
       "Insert fails when row is not within view"
       (test-exec-expect-exn
-        (lambda (v) (insert (where v "name = Larry") "name" '("Ezra")))
+        (lambda (v) (insert (where v "name = 'Larry'") "name" '("Ezra")))
+        "insert: failed"
         )
       )
     )
@@ -140,7 +139,8 @@
                      ; Joined views are not deletable
                      (delete (join v v ""))
                      )
-                   ))
+                   )
+                            "contract violation")
       )
     )
   (test-suite
@@ -159,6 +159,7 @@
       "Update of non-existant column fails"
       (test-exec-expect-exn
         (lambda (v) (update v "flavor = 'Cherry'"))
+        "undefined identifier"
         )
       )
     (test-case
@@ -177,9 +178,10 @@
         (lambda (v)
           (begin
             (insert-test-names v)
-            (update (where v "name = Ezra") "name = 'Larry'")
+            (update (where v "name = 'Ezra'") "name = 'Larry'")
             )
           )
+        "update: failed"
         )
       )
     (test-case
