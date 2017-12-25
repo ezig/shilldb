@@ -2,10 +2,7 @@
 
 (provide enhance-blame/c
          list-assoc
-         mutator-redirect-proc
-         prop:rights
-         rights?
-         get-rights)
+         mutator-redirect-proc)
 
 (struct enhance-blame/c (ctc msg)
   #:property prop:contract

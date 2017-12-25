@@ -39,7 +39,6 @@ suggested form for view/c
     [(_ p:privilege ...)
      #'(view-proxy (list (privilege-parse p) ...) #f)]))
 
-
   (view/c [#:fetch #t #t] #:update)
 
 
