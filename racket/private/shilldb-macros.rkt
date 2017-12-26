@@ -37,41 +37,48 @@ suggested form for view/c
     #:description "privilege modifier"
     (pattern (name:keyword val:expr)))
   
-  (define (validate-modifiers priv-name ks vs)
-    (let ([k-datums (map syntax->datum ks)]
-          [valid-mods (map car (hash-ref valid-modifiers priv-name))])
-      ;TODO: improve error messages
-      (unless (list-unique? k-datums)
-        (raise-syntax-error 'view/c "duplicate modifier for privilege"))
-      (for-each (λ (k) (unless (member k valid-mods)
-                         (raise-syntax-error 'view/c "invalid modifier for privilege"))) k-datums)
-      vs))
+  (define (validate-modifiers priv-name ks vs priv-stx)
+    (define (check-valid-names)
+      (let ([valid-mods (map car (hash-ref valid-modifiers priv-name))])
+        (for-each (λ (k) (unless (member (syntax->datum k) valid-mods)
+                           (raise-syntax-error 'view/c (format "invalid modifier for privilege ~a" priv-name) priv-stx k)))
+                  ks)))
+    (define (check-duplicates)      
+      (foldl (λ (hd acc)
+               (let ([hd-datum (syntax->datum hd)])
+                 (if (member hd-datum acc)
+                     (raise-syntax-error 'view/c (format "duplicate modifier for privilege ~a" priv-name) priv-stx hd)
+                     (cons hd-datum acc))))
+             null ks))
     
-    (define-syntax-class privilege
-      #:description "privilege"
-      (pattern name:privilege-name
-               #:with ((~seq mod-name:keyword mod-val:expr) ...) '()
-               #:attr [proxy-args 1] '())
-      (pattern [name:privilege-name (~seq mod-name:keyword mod-val:expr) ...]
-               #:attr [proxy-args 1]
-               ;(println (syntax->list #'(mod-val ...))))))
-               (validate-modifiers (privilege-stx->string #'name) (syntax->list #'(mod-name ...)) (syntax->list #'(mod-val ...))))))
+    (begin
+      (check-valid-names)
+      (check-duplicates)
+      vs))
   
-  (define-syntax (privilege-parse stx)
-    (syntax-parse stx
-      [(_ p:privilege)
-       #`(list #,(privilege-stx->string #`p.name) #t p.proxy-args ...)]))
+  (define-syntax-class privilege
+    #:description "privilege"
+    (pattern name:privilege-name
+             #:with ((~seq mod-name:keyword mod-val:expr) ...) '()
+             #:attr [proxy-args 1] '())
+    (pattern [name:privilege-name (~seq mod-name:keyword mod-val:expr) ...]
+             #:attr [proxy-args 1]
+             (validate-modifiers (privilege-stx->string #'name) (syntax->list #'(mod-name ...)) (syntax->list #'(mod-val ...)) this-syntax))))
   
-  (define-syntax (view/c stx)
-    (syntax-parse stx
-      [(_ p:privilege ...)
-       #'(view-proxy (list (privilege-parse p) ...) #f)]))
+(define-syntax (privilege-parse stx)
+  (syntax-parse stx
+    [(_ p:privilege)
+     #`(list #,(privilege-stx->string #`p.name) #t p.proxy-args ...)]))
+  
+(define-syntax (view/c stx)
+  (syntax-parse stx
+    [(_ p:privilege ...)
+     #'(view-proxy (list (privilege-parse p) ...) #f)]))
   
   
 ;(define/contract v
 ;  (view/c [+fetch #:restrict (λ (v) (where v "grade < 90"))])
 ;  (open-view "test.db" "students"))
 ;(fetch v)
-           
-(view/c [+fetch #:a (λ (v) v)])
-  
+
+(view/c [+fetch #:restrict (λ (v) v)])
