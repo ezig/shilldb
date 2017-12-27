@@ -9,9 +9,9 @@ suggested form for view/c
 
 |#
 
+(provide view/c)
+
 (require (for-syntax syntax/parse)
-         (for-syntax (only-in "api/util.rkt"
-                              list-unique?))
          (except-in "shilldb.rkt" view/c))
 
 
@@ -81,4 +81,4 @@ suggested form for view/c
 ;  (open-view "test.db" "students"))
 ;(fetch v)
 
-(view/c [+fetch #:restrict (λ (v) v)])
+;(view/c [+fetch #:restrict (λ (v) v)])
