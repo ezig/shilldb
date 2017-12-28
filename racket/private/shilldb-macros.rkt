@@ -1,6 +1,14 @@
 #lang racket
 
 
+
+
+(provide view/c
+         constraint/c)
+
+(require (for-syntax syntax/parse)
+         (except-in "shilldb.rkt" view/c))
+
 #|
 
 suggested form for view/c
@@ -8,11 +16,6 @@ suggested form for view/c
 (view/c [#:fetch expr ...] #:update)
 
 |#
-
-(provide view/c)
-
-(require (for-syntax syntax/parse)
-         (except-in "shilldb.rkt" view/c))
 
 
 (begin-for-syntax
@@ -82,3 +85,23 @@ suggested form for view/c
 ;(fetch v)
 
 ;(view/c [+fetch #:restrict (λ (v) v)])
+
+
+#|
+
+suggested form for join-constraint/c
+
+(join-constraint/c ([(X ...) constraint] ...) ctc )
+
+|#
+
+
+(define-syntax (constraint/c stx)
+  (syntax-parse stx
+    [(_ ([(X:id ...) constraint] ...) ctc)
+     #'(let-values ([(X ...) (constraint)] ...)
+         ctc)]))
+
+
+
+
