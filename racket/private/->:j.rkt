@@ -5,6 +5,7 @@
                      (only-in racket
                               remove-duplicates
                               cons?
+                              empty?
                               flatten)))
 (begin-for-syntax
   (define-syntax-class jarg
@@ -12,36 +13,54 @@
     (pattern [ctc:expr #:groups groups:id ...])
     (pattern ctc:expr
              #:with (groups:id ...) '()))
-  
+
+  (define (flatten-once lst)
+    (apply append (map (lambda (e) (if (cons? e) e (list e))) lst)))
+
+  ; XXX: Check for syntax errors
   (define (handle-jargs ids jargs ctcs)
-    (let ([jhash (make-hash)])
-      (for-each (λ (s) (hash-set! jhash (syntax->datum s) null)) ids)
-      (let ([new-ids
-             (map (λ (gs)
-                    (let ([owner (generate-temporary)]
-                          [recorder (generate-temporary)])
-                      (for-each (λ (g) (hash-set! jhash (syntax->datum g)
-                                                  (cons recorder (hash-ref jhash (syntax->datum g)))))
-                                (syntax->list gs))
-                      (list owner recorder)))
-                  jargs)])
-        #`(let-values #,(map (λ (p) #`[#,(map (λ (i) (format-id #f "~a" i)) p) (make-new-group)]) new-ids)
-            #,(apply append (map (lambda (e) (if (cons? e) e (list e)))
-                                 (syntax->datum
-                                  #`(-> #,(map (λ (j ctc own)
-                                                 (remove-duplicates (flatten (syntax->datum #`(and/c #,ctc
-                                                                   #,(car own)
-                                                                   #,(map (λ (g) (hash-ref jhash (syntax->datum g)))
-                                                                          (syntax->list j)))))))
-                                               jargs
-                                               ctcs
-                                               new-ids))))))))))
+    (define (make-constraint-ids)
+      (map (λ (groups) (if (empty? groups)
+                           '()
+                           (list (generate-temporary) (generate-temporary))))
+            jargs))
+    (define (make-constraint-hash constraint-ids)
+      (let ([jhash (make-hash)])
+        (begin
+          ; Make hash entry for each declared group id
+          (for-each (λ (i) (hash-set! jhash (syntax->datum i) null)) ids)
+          (map (λ (groups constraints)
+                 (for-each (λ (group)
+                             (let* ([g-datum (syntax->datum group)]
+                                    [old-hash-v (hash-ref jhash g-datum)]
+                                    [new-hash-v (cons (cadr constraints) old-hash-v)])                             
+                               (hash-set! jhash g-datum new-hash-v)))                                      
+                           groups))
+               jargs
+               constraint-ids)
+          jhash)))
+      
+    (let* ([constraint-ids (make-constraint-ids)]
+           [jhash (make-constraint-hash constraint-ids)])
+      #`(let-values #,(map (λ (p) #`[#,(map (λ (i) (format-id #f "~a" i)) p) (make-new-group)]) (filter (compose not empty?) constraint-ids))
+          #,(flatten-once
+             (syntax->datum
+              #`(-> #,(map (λ (j ctc own)
+                             (if (empty? j)
+                                 #`#,ctc
+                                 (remove-duplicates (flatten (syntax->datum #`(and/c #,ctc
+                                                                                     #,(car own)
+                                                                                     #,(map (λ (g) (hash-ref jhash (syntax->datum g)))
+                                                                                            j)))))))
+                             jargs
+                             ctcs
+                             constraint-ids))))))))
 
 (define-syntax (->/j stx)
   (syntax-parse stx
     [(_ ([X:id] ...) jargs:jarg ...)
-     (handle-jargs (syntax->list #'(X ...)) (syntax->list #`((jargs.groups ...) ...))
-                   (syntax->list #`(jargs.ctc ...)))]))
+     (handle-jargs (syntax->list #'(X ...)) (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
+                   (syntax->list #'(jargs.ctc ...)))]))
 
 (struct dummy
    ([constraint #:mutable #:auto])
