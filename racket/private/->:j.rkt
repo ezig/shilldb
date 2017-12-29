@@ -9,7 +9,9 @@
 (begin-for-syntax
   (define-syntax-class jarg
     #:description "join arg"
-    (pattern [ctc:expr #:groups groups:id ...]))
+    (pattern [ctc:expr #:groups groups:id ...])
+    (pattern ctc:expr
+             #:with (groups:id ...) '()))
   
   (define (handle-jargs ids jargs ctcs)
     (let ([jhash (make-hash)])
@@ -104,10 +106,11 @@
         [dummy? #:groups X Y]
         [dummy? #:groups X]
         [dummy? #:groups Y]
-        [dummy? #:groups X]))
+        dummy?))
 
 (define/contract (f x y z)
   example/c
   (binop x y))
 
 (f (dummy) (dummy) (dummy))
+  
