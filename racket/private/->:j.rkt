@@ -6,6 +6,7 @@
                               remove-duplicates
                               cons?
                               empty?
+                              curry
                               flatten)))
 (begin-for-syntax
   (define-syntax-class jarg
@@ -39,22 +40,20 @@
                jargs
                constraint-ids)
           jhash)))
-      
+    (define (make-arg-contract jhash jarg ctc constraint-ids)
+      (if (empty? jarg)
+          #`#,ctc
+          ((compose remove-duplicates flatten syntax->datum)
+           #`(and/c #,ctc
+                    #,(car constraint-ids)
+                    #,(map (λ (group) (hash-ref jhash (syntax->datum group))) jarg)))))
+    
     (let* ([constraint-ids (make-constraint-ids)]
            [jhash (make-constraint-hash constraint-ids)])
       #`(let-values #,(map (λ (p) #`[#,(map (λ (i) (format-id #f "~a" i)) p) (make-new-group)]) (filter (compose not empty?) constraint-ids))
           #,(flatten-once
              (syntax->datum
-              #`(-> #,(map (λ (j ctc own)
-                             (if (empty? j)
-                                 #`#,ctc
-                                 (remove-duplicates (flatten (syntax->datum #`(and/c #,ctc
-                                                                                     #,(car own)
-                                                                                     #,(map (λ (g) (hash-ref jhash (syntax->datum g)))
-                                                                                            j)))))))
-                             jargs
-                             ctcs
-                             constraint-ids))))))))
+              #`(-> #,(map (curry make-arg-contract jhash) jargs ctcs constraint-ids))))))))
 
 (define-syntax (->/j stx)
   (syntax-parse stx
