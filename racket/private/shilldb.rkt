@@ -66,6 +66,7 @@
          (define select/c (make-select/c (list-assoc "select" full-details) full-details))
          (define update/c (make-update/c val ctc (list-assoc "update" full-details)))
          ;(define get-join-details/c (make-get-join-details/c ctc (list-assoc "join" full-details)))
+         (define join/c (make-join/c (list-assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          (impersonate-struct val
@@ -77,7 +78,7 @@
                              set-shill-view-select! mutator-redirect-proc
                              shill-view-update (redirect-proc update/c)
                              set-shill-view-update! mutator-redirect-proc
-                             shill-view-join-constraint (λ (s v) (shill-view-join-constraint val))
+                             shill-view-join-constraint (redirect-proc join/c)
                              set-shill-view-join-constraint! mutator-redirect-proc                            
                              impersonator-prop:contracted ctc))))))
 
@@ -96,7 +97,13 @@
           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (fetch-pre/c (third details)))])
   "fetch"))
 
-(define (make-get-join-details/c ctc details)
+(define (make-join/c details)
+  (enhance-blame/c
+   (cond [(= (length details) 2)
+          (->* (any/c) #:pre (second details) any)])
+   "join"))
+
+#|(define (make-get-join-details/c ctc details)
   (define (compose-pres p1 p2)
     (λ (v1 v2 jc)
       (and (p1 v1 v2 jc) (p2 v1 v2 jc))))
@@ -126,7 +133,7 @@
         [(= dl 5)
          (join-details/c (third details) (fourth details) (fifth details))]
         [else
-         (join-details/c (const-three-arg #t) (const-three-arg values) (const-three-arg any/c))]))
+         (join-details/c (const-three-arg #t) (const-three-arg values) (const-three-arg any/c))]))|#
 
 (define (make-where/c details full-details)
   (define dl (length details))
@@ -218,7 +225,11 @@
         (v2-post (v1-post (build-intermediate v1 v2)))
         #f))); FIXME|#
 
-(define (join v1 v2 jcond)
+(define/contract (join v1 v2 jcond)
+  (->i ([v1 shill-view?]
+        [v2 shill-view?]
+        [jcond string?])
+       [res (v1 v2) (and/c (value-contract v1) (value-contract v2))])
   (define (real-join v1 v2 jcond)
     (build-view (join-impl (shill-view-view v1) (shill-view-view v2) jcond)))
   (((compose (shill-view-join-constraint v1)
@@ -293,7 +304,8 @@
                                shill-view-update (redirect (shill-view-update val))
                                set-shill-view-update! mutator-redirect-proc
                                shill-view-join-constraint (λ (s v) (compose new-constraint v))
-                               set-shill-view-join-constraint! mutator-redirect-proc))))))
+                               set-shill-view-join-constraint! mutator-redirect-proc
+                               impersonator-prop:contracted (and/c (value-contract val) ctc)))))))
   (values (constraint-args/c) (record-arg/c)))
 
 (module+ test
@@ -309,7 +321,7 @@
 
   (define/contract (f x y z)
     example/c
-    (join y z ""))
+    (join x z ""))
 
   (f (open-view "test.db" "students") (open-view "test.db" "students") (open-view "test.db" "students")))
 #|  ;(define/contract v1 (view/c #:fetch (list "fetch" #t) #:join (list "join" #t values any/c (λ (v) (displayln v)))) (open-view "test.db" "test"))

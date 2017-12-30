@@ -147,16 +147,19 @@ suggested form for view/c
 ;(fetch v)
 
 ;(view/c [+fetch #:restrict (λ (v) v)])
-  
-  (->j ([X user])
-       [(view/c +fetch) #:groups X Y]
+
+(define example/c
+  (->j ([X]
+        [Y])
+       [(view/c +join) #:groups X Y]
        [(view/c +fetch) #:groups X]
-       [(view/c +fetch) #:groups Y]
+       [(view/c +fetch +where +join) #:groups Y]
        any))
 
 (define/contract (f x y z)
   example/c
-  (fetch (join x z "")))
+  ;(value-contract x))
+  (join x z ""))
 
 (f (open-view "test.db" "students") (open-view "test.db" "test") (open-view "test.db" "test"))
 
