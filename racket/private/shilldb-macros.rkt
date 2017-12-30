@@ -4,9 +4,18 @@
 
 
 (provide view/c
-         constraint/c)
+         ->j)
 
-(require (for-syntax syntax/parse)
+(require (for-syntax syntax/parse
+                     (only-in racket/syntax
+                              format-id
+                              generate-temporary)
+                     (only-in racket
+                              remove-duplicates
+                              cons?
+                              empty?
+                              curry
+                              flatten))
          (except-in "shilldb.rkt" view/c))
 
 #|
@@ -19,6 +28,53 @@ suggested form for view/c
 
 
 (begin-for-syntax
+  (define-syntax-class jarg
+    #:description "join arg"
+    (pattern [ctc:expr #:groups groups:id ...])
+    (pattern ctc:expr
+             #:with (groups:id ...) '()))
+
+  (define (flatten-once lst)
+    (apply append (map (lambda (e) (if (cons? e) e (list e))) lst)))
+
+  ; XXX: Check for syntax errors
+  (define (handle-jargs ids jargs ctcs)
+    (define (make-constraint-ids)
+      (map (λ (groups) (if (empty? groups)
+                           '()
+                           (list (generate-temporary) (generate-temporary))))
+           jargs))
+    (define (make-constraint-hash constraint-ids)
+      (let ([jhash (make-hash)])
+        (begin
+          ; Make hash entry for each declared group id
+          (for-each (λ (i) (hash-set! jhash (syntax->datum i) null)) ids)
+          (map (λ (groups constraints)
+                 (for-each (λ (group)
+                             (let* ([g-datum (syntax->datum group)]
+                                    [old-hash-v (hash-ref jhash g-datum)]
+                                    [new-hash-v (cons (cadr constraints) old-hash-v)])                             
+                               (hash-set! jhash g-datum new-hash-v)))                                      
+                           groups))
+               jargs
+               constraint-ids)
+          jhash)))
+    (define (make-arg-contract jhash jarg ctc constraint-ids)
+      (if (empty? jarg)
+          #`#,ctc
+          #`(and/c #,ctc
+                   #,(car constraint-ids)
+                   #,((compose remove-duplicates flatten syntax->datum)
+                      #`(and/c #,(map (λ (group) (hash-ref jhash (syntax->datum group))) jarg))))))
+  
+    (let* ([constraint-ids (make-constraint-ids)]
+           [jhash (make-constraint-hash constraint-ids)])
+      #`(let-values #,(map (λ (p) #`[#,(map (λ (i) (format-id #f "~a" i)) p) (make-join-group)])
+                           (filter (compose not empty?) constraint-ids))
+          #,(flatten-once
+             (syntax->datum
+              #`(-> #,(map (curry make-arg-contract jhash) jargs ctcs constraint-ids)))))))
+  
   (define valid-modifiers
     (hash "fetch" (list '(#:restrict 0))
           "update" (list '(#:restrict 0))))
@@ -67,7 +123,13 @@ suggested form for view/c
     (pattern [name:privilege-name (~seq mod-name:keyword mod-val:expr) ...]
              #:attr [proxy-args 1]
              (validate-modifiers (privilege-stx->string #'name) (syntax->list #'(mod-name ...)) (syntax->list #'(mod-val ...)) this-syntax))))
-  
+
+(define-syntax (->j stx)
+  (syntax-parse stx
+    [(_ ([X:id] ...) jargs:jarg ...)
+     (handle-jargs (syntax->list #'(X ...)) (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
+                   (syntax->list #'(jargs.ctc ...)))]))
+
 (define-syntax (privilege-parse stx)
   (syntax-parse stx
     [(_ p:privilege)
@@ -85,16 +147,27 @@ suggested form for view/c
 ;(fetch v)
 
 ;(view/c [+fetch #:restrict (λ (v) v)])
+  
+  (->j ([X user])
+       [(view/c +fetch) #:groups X Y]
+       [(view/c +fetch) #:groups X]
+       [(view/c +fetch) #:groups Y]
+       any))
 
+(define/contract (f x y z)
+  example/c
+  (fetch (join x z "")))
+
+(f (open-view "test.db" "students") (open-view "test.db" "test") (open-view "test.db" "test"))
+
+;(join (open-view "test.db" "students") (open-view "test.db" "students") "")
 
 #|
 
 suggested form for join-constraint/c
 
 (join-constraint/c ([(X ...) constraint] ...) ctc )
-
 |#
-
 
 (define-syntax (constraint/c stx)
   (syntax-parse stx

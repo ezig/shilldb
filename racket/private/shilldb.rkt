@@ -17,6 +17,7 @@
 (provide
  view-proxy
  make-join-group
+ shill-view?
  view/c
  fetch
  update
@@ -76,7 +77,7 @@
                              set-shill-view-select! mutator-redirect-proc
                              shill-view-update (redirect-proc update/c)
                              set-shill-view-update! mutator-redirect-proc
-                             shill-view-join-constraint (shill-view-join-constraint val)
+                             shill-view-join-constraint (λ (s v) (shill-view-join-constraint val))
                              set-shill-view-join-constraint! mutator-redirect-proc                            
                              impersonator-prop:contracted ctc))))))
 
