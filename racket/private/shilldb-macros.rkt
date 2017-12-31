@@ -155,46 +155,22 @@ suggested form for view/c
      #'(view-proxy (list (privilege-parse p) ...) #f)]))
   
   
-;(define/contract v
-;  (view/c [+fetch #:restrict (λ (v) (where v "grade < 90"))])
-;  (open-view "test.db" "students"))
-;(fetch v)
 
-;(view/c [+fetch #:restrict (λ (v) v)])
-
-#|(define example/c
-  (->j ([X]
-        [Y])
-       [(view/c +join) #:groups X Y]
-       [(view/c +fetch) #:groups X]
-       [(view/c +fetch +where +join) #:groups Y]
-       any))
-
-(define/contract (f x y z)
-  example/c
-  ;(value-contract x))
-  (join x z ""))
-
-(f (open-view "test.db" "students") (open-view "test.db" "test") (open-view "test.db" "test"))
-|#
-
-; check for nonsense group assignments, like X Y X Y
-(define example/c
+(module+ test
+  (define example/c
   (->j ([X #:post (λ (v) (where v "a = 3")) #:with (view/c +fetch +where)])
        [(view/c +join) #:groups X]
        [(view/c +join) #:groups X]
        (view/c +fetch)
        any))
 
-(view/c +fetch)
+  (view/c +fetch)
 
-(define/contract (f x y)
-  example/c
-  (fetch (join x y "")))
+  (define/contract (f x y)
+    example/c
+    (fetch (join x y "")))
 
-(f (open-view "test.db" "students") (open-view "test.db" "test"))
-
-;(join (open-view "test.db" "students") (open-view "test.db" "students") "")
+  (f (open-view "test.db" "students") (open-view "test.db" "test")))
 
 #|
 
