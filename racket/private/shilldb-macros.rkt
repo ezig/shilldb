@@ -38,17 +38,19 @@ suggested form for view/c
     (apply append (map (lambda (e) (if (cons? e) e (list e))) lst)))
 
   ; XXX: Check for syntax errors
-  (define (handle-jargs ids jargs ctcs)
+  (define (handle-jargs ids constraints jargs ctcs)
     (define (make-constraint-ids)
       (map (λ (groups) (if (empty? groups)
                            '()
                            (list (generate-temporary) (generate-temporary))))
            jargs))
     (define (make-constraint-hash constraint-ids)
-      (let ([jhash (make-hash)])
+      (let ([jhash (make-hash)]
+            [chash (make-hash)])
         (begin
           ; Make hash entry for each declared group id
           (for-each (λ (i) (hash-set! jhash (syntax->datum i) null)) ids)
+          (for-each (λ (i c) (hash-set! chash (syntax->datum i) c)) ids constraints)
           (map (λ (groups constraints)
                  (for-each (λ (group)
                              (let* ([g-datum (syntax->datum group)]
@@ -58,22 +60,30 @@ suggested form for view/c
                            groups))
                jargs
                constraint-ids)
-          jhash)))
-    (define (make-arg-contract jhash jarg ctc constraint-ids)
+          (values jhash chash))))
+    (define (make-arg-contract jhash chash jarg ctc constraint-ids)
       (if (empty? jarg)
           #`#,ctc
           #`(and/c #,ctc
                    #,(car constraint-ids)
-                   #,((compose remove-duplicates flatten syntax->datum)
-                      #`(and/c #,(map (λ (group) (hash-ref jhash (syntax->datum group))) jarg))))))
+                   #,((compose remove-duplicates flatten-once flatten-once syntax->datum)
+                      #`(and/c #,(map (λ (group)
+                                        (let ([d (syntax->datum group)])
+                                          (map (λ (c)
+                                                 (if (member c constraint-ids)
+                                                     #`any/c
+                                                     #`(#,c
+                                                        #,(hash-ref chash d))))
+                                               (hash-ref jhash d))))
+                                      jarg))))))
   
-    (let* ([constraint-ids (make-constraint-ids)]
-           [jhash (make-constraint-hash constraint-ids)])
+    (let*-values ([(constraint-ids) (make-constraint-ids)]
+                  [(jhash chash) (make-constraint-hash constraint-ids)])
       #`(let-values #,(map (λ (p) #`[#,(map (λ (i) (format-id #f "~a" i)) p) (make-join-group)])
                            (filter (compose not empty?) constraint-ids))
           #,(flatten-once
              (syntax->datum
-              #`(-> #,(map (curry make-arg-contract jhash) jargs ctcs constraint-ids)))))))
+              #`(-> #,(map (curry make-arg-contract jhash chash) jargs ctcs constraint-ids)))))))
   
   (define valid-modifiers
     (hash "fetch" (list '(#:restrict 0))
@@ -126,8 +136,10 @@ suggested form for view/c
 
 (define-syntax (->j stx)
   (syntax-parse stx
-    [(_ ([X:id] ...) jargs:jarg ...)
-     (handle-jargs (syntax->list #'(X ...)) (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
+    [(_ ([X:id #:post constraint:expr] ...) jargs:jarg ...)
+     (handle-jargs (syntax->list #'(X ...))
+                   (syntax->list #'(constraint ...))
+                   (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
                    (syntax->list #'(jargs.ctc ...)))]))
 
 (define-syntax (privilege-parse stx)
@@ -148,7 +160,7 @@ suggested form for view/c
 
 ;(view/c [+fetch #:restrict (λ (v) v)])
 
-(define example/c
+#|(define example/c
   (->j ([X]
         [Y])
        [(view/c +join) #:groups X Y]
@@ -160,6 +172,22 @@ suggested form for view/c
   example/c
   ;(value-contract x))
   (join x z ""))
+
+(f (open-view "test.db" "students") (open-view "test.db" "test") (open-view "test.db" "test"))
+|#
+
+; check for nonsense group assignments, like X Y X Y
+(define example/c
+  (->j ([X #:post (λ (v) (where v "a = 3"))]
+        [Y #:post (λ (v) (where v "a < 5"))])
+       [(view/c +join +where +fetch) #:groups X Y]
+       [(view/c +join +fetch) #:groups X]
+       [(view/c +join +where) #:groups Y]
+       any))
+
+(define/contract (f x y z)
+  example/c
+  (fetch (join x z "")))
 
 (f (open-view "test.db" "students") (open-view "test.db" "test") (open-view "test.db" "test"))
 

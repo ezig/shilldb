@@ -225,11 +225,7 @@
         (v2-post (v1-post (build-intermediate v1 v2)))
         #f))); FIXME|#
 
-(define/contract (join v1 v2 jcond)
-  (->i ([v1 shill-view?]
-        [v2 shill-view?]
-        [jcond string?])
-       [res (v1 v2) (and/c (value-contract v1) (value-contract v2))])
+(define (join v1 v2 jcond)
   (define (real-join v1 v2 jcond)
     (build-view (join-impl (shill-view-view v1) (shill-view-view v2) jcond)))
   (((compose (shill-view-join-constraint v1)
@@ -266,34 +262,60 @@
      (λ (ctc)
        (λ (blame)
          (λ (val)
-           (if (member val (unbox store))
+           (if (memf (λ (v) (equal? (car v) val)) (unbox store))
                val
                (raise-blame-error
                 blame
                 val
                 "not one of the expected join arguments")))))))
 
-  (struct record-arg/c ()
+  (struct record-arg/c (post-tf)
     #:property prop:contract
     (build-contract-property
      #:projection
      (λ (ctc)
        (λ (blame)
          (λ (val)
-           (set-box! store (cons val (unbox store)))
+           (define post-tf (record-arg/c-post-tf ctc))
+           (set-box! store (cons (cons val post-tf) (unbox store)))
            val)))))
 
+  (struct apply-post/c (v1 v2 jcond blame)
+    #:property prop:contract
+    (build-contract-property
+     #:projection
+     (λ (ctc)
+       (λ (blame)
+         (λ (val)
+           (define-values (v1 v2 jcond real-blame)
+             (values
+              (apply-post/c-v1 ctc)
+              (apply-post/c-v2 ctc)
+              (apply-post/c-jcond ctc)
+              (apply-post/c-blame ctc)))
+           ; stick this stuff in a struct so it's nicer
+           ((compose (cdr (first (memf (λ (v) (equal? (car v) v1)) (unbox store))))
+                     (cdr (first (memf (λ (v) (equal? (car v) v2)) (unbox store)))))
+            (((contract-projection (value-contract v2)) real-blame)
+             (((contract-projection (value-contract v1)) real-blame) val))))))))
+            
+  
   (struct constraint-args/c ()
     #:property prop:contract
     (build-contract-property
      #:projection
      (λ (ctc)
-       (define new-constraint/c (-> (valid-arg/c) (valid-arg/c) any/c any/c))
        (λ (blame)
+         (define new-constraint/c
+           (->i ([v1 (valid-arg/c)]
+                 [v2 (valid-arg/c)]
+                 [jcond any/c])
+                [res (v1 v2 jcond) (apply-post/c v1 v2 jcond blame)]))
          (define new-constraint ((contract-projection new-constraint/c) blame))
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
-           (set-box! store (cons val (unbox store)))
+           ; No constraint on self in a group, just use values
+           (set-box! store (cons (cons val values) (unbox store)))
            (impersonate-struct val
                                shill-view-fetch (redirect (shill-view-fetch val))
                                set-shill-view-fetch! mutator-redirect-proc
@@ -306,7 +328,7 @@
                                shill-view-join-constraint (λ (s v) (compose new-constraint v))
                                set-shill-view-join-constraint! mutator-redirect-proc
                                impersonator-prop:contracted (and/c (value-contract val) ctc)))))))
-  (values (constraint-args/c) (record-arg/c)))
+  (values (constraint-args/c) record-arg/c))
 
 (module+ test
   (define example/c
@@ -314,16 +336,15 @@
                  [(YO Y) (make-join-group)]
                  [(ZO Z) (make-join-group)])
       (->
-       (and/c shill-view? XO X Z)
-       (and/c shill-view? YO X)
-       (and/c shill-view? ZO X)
-       shill-view?)))
+       (and/c shill-view? XO (X) (Y (λ (v) (where v "a < 10"))))
+       (and/c shill-view? YO (Y) (X (λ (v) (where v "a < 10"))))
+       any)))
 
-  (define/contract (f x y z)
+  (define/contract (f x y)
     example/c
-    (join x z ""))
+    (fetch (join x y "")))
 
-  (f (open-view "test.db" "students") (open-view "test.db" "students") (open-view "test.db" "students")))
+  (f (open-view "test.db" "students") (open-view "test.db" "test")))
 #|  ;(define/contract v1 (view/c #:fetch (list "fetch" #t) #:join (list "join" #t values any/c (λ (v) (displayln v)))) (open-view "test.db" "test"))
   ;(define va (open-view "test.db" "artist"))
   ;(define vt (open-view "test.db" "track"))
