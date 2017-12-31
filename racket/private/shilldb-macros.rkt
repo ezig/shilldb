@@ -38,7 +38,7 @@ suggested form for view/c
     (apply append (map (lambda (e) (if (cons? e) e (list e))) lst)))
 
   ; XXX: Check for syntax errors
-  (define (handle-jargs ids constraints jargs ctcs)
+  (define (handle-jargs ids constraints dctcs jargs ctcs)
     (define (make-constraint-ids)
       (map (λ (groups) (if (empty? groups)
                            '()
@@ -50,7 +50,7 @@ suggested form for view/c
         (begin
           ; Make hash entry for each declared group id
           (for-each (λ (i) (hash-set! jhash (syntax->datum i) null)) ids)
-          (for-each (λ (i c) (hash-set! chash (syntax->datum i) c)) ids constraints)
+          (for-each (λ (i c d) (hash-set! chash (syntax->datum i) (cons c d))) ids constraints dctcs)
           (map (λ (groups constraints)
                  (for-each (λ (group)
                              (let* ([g-datum (syntax->datum group)]
@@ -73,7 +73,8 @@ suggested form for view/c
                                                  (if (member c constraint-ids)
                                                      #`any/c
                                                      #`(#,c
-                                                        #,(hash-ref chash d))))
+                                                        #,(car (hash-ref chash d))
+                                                        #,(cdr (hash-ref chash d)))))
                                                (hash-ref jhash d))))
                                       jarg))))))
   
@@ -136,9 +137,10 @@ suggested form for view/c
 
 (define-syntax (->j stx)
   (syntax-parse stx
-    [(_ ([X:id #:post constraint:expr] ...) jargs:jarg ...)
+    [(_ ([X:id #:post constraint:expr #:with dctc:expr] ...) jargs:jarg ...)
      (handle-jargs (syntax->list #'(X ...))
                    (syntax->list #'(constraint ...))
+                   (syntax->list #'(dctc ...))
                    (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
                    (syntax->list #'(jargs.ctc ...)))]))
 
@@ -178,18 +180,19 @@ suggested form for view/c
 
 ; check for nonsense group assignments, like X Y X Y
 (define example/c
-  (->j ([X #:post (λ (v) (where v "a = 3"))]
-        [Y #:post (λ (v) (where v "a < 5"))])
-       [(view/c +join +where +fetch) #:groups X Y]
-       [(view/c +join +fetch) #:groups X]
-       [(view/c +join +where) #:groups Y]
+  (->j ([X #:post (λ (v) (where v "a = 3")) #:with (view/c +fetch +where)])
+       [(view/c +join) #:groups X]
+       [(view/c +join) #:groups X]
+       (view/c +fetch)
        any))
 
-(define/contract (f x y z)
-  example/c
-  (fetch (join x z "")))
+(view/c +fetch)
 
-(f (open-view "test.db" "students") (open-view "test.db" "test") (open-view "test.db" "test"))
+(define/contract (f x y)
+  example/c
+  (fetch (join x y "")))
+
+(f (open-view "test.db" "students") (open-view "test.db" "test"))
 
 ;(join (open-view "test.db" "students") (open-view "test.db" "students") "")
 

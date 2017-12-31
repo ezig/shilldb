@@ -269,7 +269,7 @@
                 val
                 "not one of the expected join arguments")))))))
 
-  (struct record-arg/c (post-tf)
+  (struct record-arg/c (post-tf derive/c)
     #:property prop:contract
     (build-contract-property
      #:projection
@@ -277,7 +277,8 @@
        (λ (blame)
          (λ (val)
            (define post-tf (record-arg/c-post-tf ctc))
-           (set-box! store (cons (cons val post-tf) (unbox store)))
+           (define derive/c (record-arg/c-derive/c ctc))
+           (set-box! store (cons (list val post-tf derive/c) (unbox store)))
            val)))))
 
   (struct apply-post/c (v1 v2 jcond blame)
@@ -294,11 +295,15 @@
               (apply-post/c-jcond ctc)
               (apply-post/c-blame ctc)))
            ; stick this stuff in a struct so it's nicer
-           ((compose (cdr (first (memf (λ (v) (equal? (car v) v1)) (unbox store))))
-                     (cdr (first (memf (λ (v) (equal? (car v) v2)) (unbox store)))))
-            (((contract-projection (value-contract v2)) real-blame)
-             (((contract-projection (value-contract v1)) real-blame) val))))))))
-            
+           (define (get v)
+             (first (memf (λ (x) (equal? (car x) v)) (unbox store))))
+
+           (define details1 (get v1))
+           (define details2 (get v2))
+           
+           ((compose (cadr details2) (cadr details1))
+            (((contract-projection (caddr details2)) real-blame)
+             (((contract-projection (caddr details1)) real-blame) val))))))))
   
   (struct constraint-args/c ()
     #:property prop:contract
@@ -315,7 +320,7 @@
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
            ; No constraint on self in a group, just use values
-           (set-box! store (cons (cons val values) (unbox store)))
+           (set-box! store (cons (list val values any/c) (unbox store)))
            (impersonate-struct val
                                shill-view-fetch (redirect (shill-view-fetch val))
                                set-shill-view-fetch! mutator-redirect-proc
@@ -333,11 +338,10 @@
 (module+ test
   (define example/c
     (let-values ([(XO X) (make-join-group)]
-                 [(YO Y) (make-join-group)]
-                 [(ZO Z) (make-join-group)])
+                 [(YO Y) (make-join-group)])
       (->
-       (and/c shill-view? XO (X) (Y (λ (v) (where v "a < 10"))))
-       (and/c shill-view? YO (Y) (X (λ (v) (where v "a < 10"))))
+       (and/c shill-view? XO (Y (λ (v) (where v "a < 10")) (view-proxy (list (list "fetch" #t) (list "where" #t)) #f)))
+       (and/c shill-view? YO (X (λ (v) (where v "a < 10")) (view-proxy (list (list "fetch" #t) (list "where" #t)) #f)))
        any)))
 
   (define/contract (f x y)
