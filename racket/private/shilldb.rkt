@@ -19,18 +19,22 @@
  make-join-group
  shill-view?
  view/c
- fetch
- update
  where
  join
  select
+ fetch
+ update
+ insert
+ delete
  open-view)
 
 (struct shill-view (view
                     [fetch #:mutable]
                     [where #:mutable]
                     [select #:mutable]
-                    [update #:mutable]                  
+                    [update #:mutable]
+                    [insert #:mutable]
+                    [delete #:mutable]
                     [join-constraint #:mutable #:auto])
   #:auto-value values)
 
@@ -39,9 +43,11 @@
   (define (where v w) (build-view (where-impl (shill-view-view v) w)))
   (define (select v c) (build-view (select-impl (shill-view-view v) c)))
   (define (update v query pre [where ""]) (update-impl (shill-view-view (pre v)) query where))
+  (define (insert v cols values pre) (insert-impl (shill-view-view (pre v)) cols values))
+  (define (delete v pre) (delete-impl (shill-view-view (pre v))))
   ;(define (get-join-details pre-fun post-fun out-ctc-fun) (values pre-fun post-fun out-ctc-fun))
 
-  (shill-view view fetch where select update))
+  (shill-view view fetch where select update insert delete))
 
 
 (struct view-proxy (full-details param)
@@ -65,8 +71,10 @@
          (define where/c (make-where/c (list-assoc "where" full-details) full-details))
          (define select/c (make-select/c (list-assoc "select" full-details) full-details))
          (define update/c (make-update/c val ctc (list-assoc "update" full-details)))
-         ;(define get-join-details/c (make-get-join-details/c ctc (list-assoc "join" full-details)))
+         (define delete/c (make-delete/c val ctc (list-assoc "delete" full-details)))
+         (define insert/c (make-insert/c val ctc (list-assoc "insert" full-details)))
          (define join/c (make-join/c (list-assoc "join" full-details)))
+         ;(define get-join-details/c (make-get-join-details/c ctc (list-assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          (impersonate-struct val
@@ -78,6 +86,10 @@
                              set-shill-view-select! mutator-redirect-proc
                              shill-view-update (redirect-proc update/c)
                              set-shill-view-update! mutator-redirect-proc
+                             shill-view-delete (redirect-proc delete/c)
+                             set-shill-view-delete! mutator-redirect-proc
+                             shill-view-insert (redirect-proc insert/c)
+                             set-shill-view-insert! mutator-redirect-proc
                              shill-view-join-constraint (redirect-proc join/c)
                              set-shill-view-join-constraint! mutator-redirect-proc                            
                              impersonator-prop:contracted ctc))))))
@@ -177,7 +189,41 @@
           (and/c (->* (shill-view? (and/c string? (third details)) procedure?) ((and/c string? (fourth details))) #:pre (second details) any) (update-pre/c (fifth details)))])
   "update"))
 
- (define (make-pre-join/c view ctc details)
+(define (make-delete/c view ctc details)
+  (define (delete-pre/c pre)
+    (make-contract
+     #:projection
+     (λ (b)
+       (λ (d)
+         (λ (v p)
+           (d view (λ (v) (p (with-contract b #:result ctc (pre v))))))))))
+  (enhance-blame/c
+   (cond [(= (length details) 2)
+          (->* (shill-view? procedure?) #:pre (second details) any)]
+         [else
+          (and/c (->* (shill-view? procedure?) #:pre (second details) any) (delete-pre/c (third details)))])
+  "delete"))
+
+
+(define (make-insert/c view ctc details)
+  (define (insert-pre/c pre)
+    (make-contract
+     #:projection
+     (λ (b)
+       (λ (i)
+         (λ (v c vals p)
+           (i view c vals (λ (v) (p (with-contract b #:result ctc (pre v))))))))))
+  (enhance-blame/c
+   (cond [(= (length details) 2)
+          (->* (shill-view? string? list? procedure?)
+               #:pre (second details) any)]
+         [else
+          (and/c (->* (shill-view? string? list? procedure?)
+                      #:pre (second details) any) (insert-pre/c (third details)))])
+  "insert"))
+
+
+#| (define (make-pre-join/c view ctc details)
    (define (pre-join-pre/c pre)
      (make-contract
       #:projection
@@ -191,7 +237,7 @@
            (->* (shill-view? procedure?) #:pre (second details) any)]
           [(>= dl 3)
            (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))])
-    "join"))
+    "join"))|#
    
 
 (define (view/c
@@ -199,8 +245,10 @@
          #:where [w (list "where" #f)]
          #:select [s (list "select" #f)]
          #:update [u (list "update" #f)]
+         #:insert [i (list "insert" #f)]
+         #:delete [d (list "delete" #f)]
          #:join [j (list "join" #f)])
-  (view-proxy (list f w s u j) #f))
+  (view-proxy (list f w s u i d j) #f))
 
 (define (fetch view) ((shill-view-fetch view) view values))
 
@@ -209,6 +257,10 @@
 (define (select view c) ((shill-view-select view) view c))
 
 (define (update v query [where ""]) ((shill-view-update v) v query values where))
+
+(define (insert v cols vals) ((shill-view-insert v) v cols vals values))
+
+(define (delete v) ((shill-view-delete v) v values))
 
 #|(define (join v1 v2 jcond)
   (define id-transform (λ (v1 v2 jc) values))
@@ -319,17 +371,9 @@
          (define new-constraint ((contract-projection new-constraint/c) blame))
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
-           ; No constraint on self in a group, just use values
+           ; No constraint on self, just use `values`
            (set-box! store (cons (list val values any/c) (unbox store)))
-           (impersonate-struct val
-                               shill-view-fetch (redirect (shill-view-fetch val))
-                               set-shill-view-fetch! mutator-redirect-proc
-                               shill-view-where (redirect (shill-view-where val))
-                               set-shill-view-where! mutator-redirect-proc
-                               shill-view-select (redirect (shill-view-select val))
-                               set-shill-view-select! mutator-redirect-proc
-                               shill-view-update (redirect (shill-view-update val))
-                               set-shill-view-update! mutator-redirect-proc
+           (impersonate-struct val                              
                                shill-view-join-constraint (λ (s v) (compose new-constraint v))
                                set-shill-view-join-constraint! mutator-redirect-proc
                                impersonator-prop:contracted (and/c (value-contract val) ctc)))))))

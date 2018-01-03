@@ -88,7 +88,9 @@ suggested form for view/c
   
   (define valid-modifiers
     (hash "fetch" (list '(#:restrict 0))
-          "update" (list '(#:restrict 0))))
+          "update" (list '(#:restrict 0))
+          "insert" (list '(#:restrict 0))
+          "delete" (list '(#:restrict 0))))
   
   (define-syntax-class privilege-name
     #:description "primitive privilege"
@@ -153,18 +155,13 @@ suggested form for view/c
   (syntax-parse stx
     [(_ p:privilege ...)
      #'(view-proxy (list (privilege-parse p) ...) #f)]))
-  
-  
 
 (module+ test
   (define example/c
   (->j ([X #:post (λ (v) (where v "a = 3")) #:with (view/c +fetch +where)])
        [(view/c +join) #:groups X]
        [(view/c +join) #:groups X]
-       (view/c +fetch)
        any))
-
-  (view/c +fetch)
 
   (define/contract (f x y)
     example/c
@@ -172,8 +169,8 @@ suggested form for view/c
 
   (f (open-view "test.db" "students") (open-view "test.db" "test")))
 
-#|
 
+#|
 suggested form for join-constraint/c
 
 (join-constraint/c ([(X ...) constraint] ...) ctc )
