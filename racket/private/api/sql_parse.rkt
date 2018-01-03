@@ -11,7 +11,7 @@
          parser-tools/lex
          (prefix-in : parser-tools/lex-sre))
 
-(define-tokens value-tokens (IDENTIFIER NUM STR COMP ADDOP MULOP))
+(define-tokens value-tokens (IDENTIFIER NUM STR COMP ADDOP MULOP AGG))
 (define-empty-tokens op-tokens
   (OP CP               ; ( )
       AND              ; and
@@ -22,6 +22,11 @@
 (define-lex-abbrevs
   [letter (:or (:/ "a" "z") (:/ #\A #\Z) )]
   [digit (:/ #\0 #\9)]
+  [aggr (:or "min" "MIN"
+             "max" "MAX"
+             "sum" "SUM"
+             "avg" "AVG"
+             "count" "COUNT")]
   [identifier (:: (:or letter #\_) (:* (:or letter digit #\_)))])
 
 (define sql-lexer
@@ -37,6 +42,7 @@
    [")" 'CP]
    ["and" 'AND]
    ["or" 'OR]
+   [aggr (token-AGG (string->symbol (string-upcase lexeme)))]
    [identifier (token-IDENTIFIER lexeme)]
    [(:: #\' (:* any-char) #\')
     (token-STR (substring lexeme 1 (- (string-length lexeme) 1)))]
