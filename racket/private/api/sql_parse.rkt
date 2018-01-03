@@ -126,34 +126,6 @@
        [(exp ADDOP exp) (parse-binop $2 $1 $3)]
        [(exp MULOP exp) (parse-binop $2 $1 $3)])))))
 
-
-(define (binop-sym-to-fun op type)
-  (case op
-    [(+) (if (eq? type 'str)
-             string-append
-             +)]
-    [(-) -]
-    [(*) *]
-    [(/) /]
-    [else (error 'binop-sym-to-fun "invalid binop ~a" op)]))
-
-(define (comp-sym-to-fun op type)
-  (define arith-sym-to-fun (hash '= =
-                                 '< <
-                                 '<= <=
-                                 '> >
-                                 '>= >=
-                                 '!= (λ (v1 v2) (not (= v1 v2)))))
-  (define string-sym-to-fun (hash '= string=?
-                                  '< string<?
-                                  '<= string<=?
-                                  '> string>?
-                                  '>= string>=?
-                                  '!= (λ (v1 v2) (not (string=? v1 v2)))))
-  (if (eq? type 'str)
-      (hash-ref string-sym-to-fun op)
-      (hash-ref arith-sym-to-fun op)))
-
 (define/contract (select-to-type-map ast)
   (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'select))) hash?)
   (define (aux t)
