@@ -21,9 +21,19 @@
      (insert-query-string view cols values))
    (define (build-fetch-query dbconn view)
      (query-string view))
+   (define (start-trigger-transact dbconn)
+     (let ([connection (sqlite3-connect #:database (sqlite3-db-conn-filename dbconn))])
+       (begin
+         (query-exec connection "BEGIN EXCLUSIVE")
+         connection)))
+
+   (define (end-trigger-transact dbconn conn)
+     (query-exec conn "END TRANSACTION")
+     (disconnect conn))
+ 
    (define/contract
-     (install-view-trigger dbconn view trig-type [suffix-num 0])
-     (->* (dbconn? view? (lambda (t) (or (eq? 'update t) (eq? 'insert t))))
+     (install-view-trigger dbconn view trig-type conn [suffix-num 0])
+     (->* (dbconn? view? (lambda (t) (or (eq? 'update t) (eq? 'insert t))) connection?)
           (number?)
           any/c)
      (let* ([trig-name (format "view_trigger~a" suffix-num)]
@@ -43,16 +53,15 @@
                                       dbconn
                                       view
                                       trig-type
+                                      conn
                                       (+ suffix-num 1)))])
          (begin
-           (connect-and-exec dbconn
-                             (lambda (c) (query-exec c trigger-q)))
+           (query-exec conn trigger-q)
            trig-name))))
-   (define (remove-trigger dbconn trig-name)
-     (connect-and-exec dbconn 
-                       (lambda (c)
-                         (query-exec c (format "DROP TRIGGER ~a" trig-name))
-                         )))
+   
+   (define (remove-trigger dbconn trig-name conn)
+     (query-exec conn (format "DROP TRIGGER ~a" trig-name)))
+
    (define (parse-type dbconn type-string)
      (let ([type-lower (string-downcase type-string)])
         (if (or (string=? type-lower "text") (string-contains? type-lower "char"))
