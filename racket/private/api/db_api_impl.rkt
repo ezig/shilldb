@@ -55,15 +55,18 @@
                  [updatable (set-intersect (view-colnames v) cols)]
                  [insertable insertable])))
 
+(define/contract (aggregate-impl v cols #:groupby [groupby #f] #:having [having #f])
+  (-> view? string?
+      #:groupby (or/c string? (curry eq? #f))
+      #:having (or/c string? (curry eq? #f)))
+  values)
+
 (define/contract (where-impl v cond)
   (-> view? string? view?)
   (let* ([new-q (restrict-where (view-where-q v) cond (view-get-type-map v))])
     (struct-copy view v [where-q new-q])))
 
-(define/contract (join-impl v1 v2 jcond [prefix (list "lhs" "rhs")])
-  (->* (view? view? string?)
-       ((and/c list (λ (p) (eq? 2 (length p))) (λ (p) (not (eq? (car p) (cdr p))))))
-       view?)
+(define (join-impl v1 v2 jcond [prefix (list "lhs" "rhs")])
   (let* ([cinfo (view-conn-info v1)]
          [tm1 (view-get-type-map v1)]
          [tm2 (view-get-type-map v2)]
