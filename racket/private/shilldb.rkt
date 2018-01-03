@@ -277,7 +277,7 @@
         (v2-post (v1-post (build-intermediate v1 v2)))
         #f))); FIXME|#
 
-(define (join v1 v2 jcond)
+(define (join v1 v2 [jcond ""])
   (define (real-join v1 v2 jcond)
     (build-view (join-impl (shill-view-view v1) (shill-view-view v2) jcond)))
   (((compose (shill-view-join-constraint v1)
@@ -390,6 +390,6 @@
 
   (define/contract (f x y)
     example/c
-    (fetch (join x y "")))
+    (fetch (join x y "a = b")))
 
   (f (open-view "test.db" "students") (open-view "test.db" "test")))
