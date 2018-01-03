@@ -14,9 +14,10 @@
 (provide (struct-out ast))
 
 (struct column (cid name type notnull default primary-key))
-(define-struct fk-constraint (table ref-col fk-col) #:transparent)
+(define-struct fk-constraint (table ref-col fk-col))
 (struct table (name type-map colnames columns fks))
 (struct join-table (type-map colnames views prefixes))
+(struct aggr-table (type-map colnames view groupby having))
 (struct in-cond (column subv neg))
 (struct view (conn-info table colnames where-q ins updatable insertable deletable))
 
@@ -30,7 +31,8 @@
 (define (view-get-fks v)
   (match (view-table v)
     [(table _ _ _ _ fks) fks]
-    [(join-table _ _ vs _) (append (map view-get-fks vs))]))
+    [(join-table _ _ vs _) (append (map view-get-fks vs))]
+    [(aggr-table _ _ v _ _) (view-get-fks v)]))
 
 ; Assumes that all columns have unique names
 (define (view-get-tname-for-col v col)
@@ -38,7 +40,8 @@
     [(table name _ colnames _ _)
      (if (member col colnames) name #f)]
     [(join-table _ _ views _)
-     (first (filter values (map view-get-tname-for-col view)))]))
+     (first (filter values (map view-get-tname-for-col view)))]
+    [(aggr-table _ _ v _ _) (view-get-tname-for-col v)]))
 
 (define (valid-default v colname)
     (let* ([col (hash-ref (table-columns (view-table v)) colname)]
@@ -47,21 +50,23 @@
           (not (and not-null? default-value-null?))))
 
 (define (view-get-type-map v)
-  (let ([t (view-table v)])
-    (if (table? t)
-        (table-type-map t)
-        (join-table-type-map t))))
-
+  (match (view-table v)
+    [(table _ tm _ _ _) tm]
+    [(join-table tm _ _ _) tm]
+    [(aggr-table tm _ _ _ _) tm]))
+    
 (define (table-replace-type-map t tm)
-  (if (table? t)
-      (struct-copy table t [type-map tm])
-      (struct-copy join-table t [type-map tm])))
-
+  (let ([t (view-table t)])
+    (match t
+      [(table _ _ _ _ _) (struct-copy table t [type-map tm])]
+      [(join-table _ _ _ _) (struct-copy join-table t [type-map tm])]
+      [(aggr-table _ _ _ _ _) (struct-copy aggr-table t [type-map tm])])))
+  
 (define (view-get-colnames v)
-  (let ([t (view-table v)])
-    (if (table? t)
-        (table-colnames t)
-        (join-table-colnames t))))
+   (match (view-table v)
+    [(table _ _ cns _ _) cns]
+    [(join-table _ cns _ _) cns]
+    [(aggr-table _ cns _ _ _) cns]))
 
 ; Parse utilities
 (define (ast-to-string ast [id-prefix ""])
