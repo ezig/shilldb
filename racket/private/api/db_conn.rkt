@@ -1,7 +1,10 @@
 #lang racket
 
 (require racket/generic
-         db)
+         db
+         (only-in "util.rkt"
+                  view-where-q
+                  ast-to-string))
 
 (provide (all-defined-out))
 
@@ -27,5 +30,6 @@
       (remove-trigger cinfo tname connection)
       (end-trigger-transact cinfo connection)
       (if (exn:fail:sql? res)
-          (error trig-type "failed due to view constraint violation")
+          (error trig-type "failed due to view constraint violation: ~a"
+                 (ast-to-string (view-where-q v)))
           res))))
