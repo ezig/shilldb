@@ -64,7 +64,30 @@
       "Empty db returns no rows"
       (check-equal? 0 (length (test-exec fetch-rows))))
     )
-
+  
+  (test-suite
+   "Tests for select"
+   (test-case
+    "Selecting can project away other columns"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert v "name" '("Ezra"))
+         (check-rows (select v "id") '((1)))))))
+   (test-case
+    "Can select simple arithmetic expression over columns"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert v "name" '("Ezra"))
+         (check-rows (select v "2 * id") '((2)))))))
+   (test-case
+    "Selecting nonexistent column fails"
+    (test-exec-expect-exn
+     (λ (v)
+         (select v "FAIL"))
+     "select: undefined identifier FAIL")))
+  
   (test-suite
     "Tests for insert"
     (test-case
