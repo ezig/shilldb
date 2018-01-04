@@ -114,7 +114,7 @@
   (define (sqlite3-query-string v [col-prefix null])
     (match (view-table v)
       [(aggr-table _ _ tv groupby having)
-       (let ([colnames (string-join (view-colnames v))]
+       (let ([colnames (string-join (view-colnames v) ",")]
              [subq (sqlite3-query-string tv)]
              [groupby (if groupby
                           (format " GROUP BY ~a" (ast-to-string groupby))
