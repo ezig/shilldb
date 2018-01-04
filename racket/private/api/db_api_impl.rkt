@@ -48,8 +48,22 @@
       (#:groupby (or/c string? (curry eq? #f))
        #:having (or/c string? (curry eq? #f)))
       view?)
-  (let ([tm (validate-aggr cols (view-get-type-map v))])
-    (select-aggr-common v cols tm)))
+  (let* ([old-tm (view-get-type-map v)]
+         [tm (validate-aggr cols old-tm)])
+    ; If both groupby and having are missing, fall back to select logic
+    (if (nor groupby having)
+        (select-aggr-common v cols tm)
+        ; XXX should this be old type map or new type map?
+        (let* ([groupby-ast (if groupby
+                                (parse-groupby groupby old-tm)
+                                #f)]
+               [having-ast (if having
+                               (parse-having having old-tm)
+                               #f)]
+               [colnames (map string-trim (string-split cols ","))]
+               [cinfo (view-conn-info v)]
+               [t (aggr-table tm colnames v groupby-ast having-ast)])
+          (view cinfo t colnames empty-where '() null #f #f)))))
 
 (define (select-aggr-common v cols tm)
   (let* ([cols (map string-trim (string-split cols ","))]
@@ -149,3 +163,8 @@
                    [insert-q (build-insert-query cinfo v cols values)])
               (connect-and-exec-with-trigger cinfo v 'insert
                                              (λ (c) (query-exec c insert-q))))))))
+
+(fetch-impl (aggregate-impl (make-view-impl "../test.db" "test")
+                            "MAX(b)"
+                            #:groupby "a"))
+                            ;#:having "MAX(b) > 5"))

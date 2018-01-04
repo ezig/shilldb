@@ -103,15 +103,24 @@
 (define/contract (query-string v)
   (-> view? string?)
   (define (sqlite3-table-string t)
-    (if (table? t)
-        (table-name t)
-        (let* ([colnames (string-join (join-table-colnames t) ",")]
-               [views (join-table-views t)]
-               [subqs (for/lists (l1)
-                        ([view views]
-                         [name (join-table-prefixes t)])
-                        (format "(~a)" (sqlite3-query-string view name)))])
-               (string-join subqs ","))))
+    (match t
+      [(table name _ _ _ _) name]
+      [(join-table _ _ views prefixes)
+       (let ([subqs (for/lists (l1)
+                      ([view views]
+                       [name (join-table-prefixes t)])
+                      (format "(~a)" (sqlite3-query-string view name)))]) ; XXX preefix
+         (string-join subqs ","))]
+      [(aggr-table _ colnames v groupby having)
+       (let ([colnames (string-join colnames)]
+             [subq (sqlite3-query-string v)]
+             [groupby (if groupby
+                          (format " GROUP BY ~a" (ast-to-string groupby))
+                          "")]
+             [having (if having
+                         (format " HAVING ~a" (ast-to-string having))
+                         "")])
+         (format "select ~a from (~a)~a~a" colnames subq groupby having))]))
   (define (sqlite3-query-string v [col-prefix null])
     (let* ([colnames (view-colnames v)]
            [colnames (if (null? col-prefix)
@@ -122,7 +131,7 @@
            [table-string (sqlite3-table-string (view-table v))]
            [where-q (where-clause-string v)])
       (format "select ~a from (~a)~a" colnames table-string where-q)))
-  (sqlite3-query-string v))
+  (println (sqlite3-query-string v)))
 
 (define/contract (delete-query-string v)
   (-> (and/c view? view-deletable) string?)

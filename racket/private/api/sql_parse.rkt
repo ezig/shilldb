@@ -1,11 +1,13 @@
 #lang racket
 
-(provide parse-where)
-(provide restrict-where)
-(provide empty-where)
-(provide validate-update)
-(provide validate-select)
-(provide validate-aggr)
+(provide parse-where
+         restrict-where
+         empty-where
+         validate-update
+         validate-select
+         validate-aggr
+         parse-groupby
+         parse-having)
 
 (require "util.rkt")
 (require parser-tools/yacc
@@ -51,13 +53,14 @@
    [(:: (:+ digit) #\. (:* digit)) (token-NUM (string->number lexeme))]))
 
 (define/contract (get-type e)
-      (-> (or/c exp? atom?) symbol?)
-      (if (exp? e)
-          (exp-type e)
-          (atom-type e)))
+      (-> (or/c exp? atom? aggop?) symbol?)
+  (match e
+    [(atom t _ _ ) t]
+    [(exp _ t _ _) t]
+    [(aggop _ t _) t]))
 
 (define/contract (build-parser p-type)
-  (-> (one-of/c 'where 'update 'select 'aggr) any/c)
+  (-> (one-of/c 'where 'update 'select 'aggr 'having) any/c)
   (λ (type-map [updatable null])
     (define (parse-cond cop e1 e2)
       (let ([type1 (get-type e1)]
@@ -90,7 +93,7 @@
      (tokens value-tokens op-tokens)
      (error
       (λ (tok-ok? tok-name tok-value start-pos end-pos)
-        (error 'where "Syntax error: unexpected token ~a (\"~a\") at ~a"
+        (error p-type "Syntax error: unexpected token ~a (\"~a\") at ~a"
                tok-name tok-value (position-offset start-pos))))
      (precs (left COMMA)
             (left OR)
@@ -107,15 +110,15 @@
                   $1
                   (error 'parser
                          "illegal clause without condition for parser type ~a" p-type))]
-       [(clause COMMA clause) (if (eq? p-type 'where)
+       [(clause COMMA clause) (if (member p-type (list 'where 'having))
                                   (error 'parser
                                          "illegal token , for parser type where")
                                   (clause 'COMMA $1 $3))]
-       [(clause AND clause) (if (eq? p-type 'where)
+       [(clause AND clause) (if (member p-type (list 'where 'having))
                                 (clause 'AND $1 $3)
                                 (error 'parser
                                        "illegal token and for parser type ~a" p-type))]
-       [(clause OR clause) (if (eq? p-type 'where)
+       [(clause OR clause) (if (member p-type (list 'where 'having))
                                (clause 'OR $1 $3)
                                (error 'parser
                                       "illegal token or for parser type ~a" p-type))])   
@@ -129,8 +132,8 @@
                        (atom (hash-ref type-map $1) #t $1))]
        [(OP exp CP) $2])
       (aggop
-       [(AGG OP atom CP) (if (eq? p-type 'aggr)
-                             (aggop $1 (atom-type $3) $3)
+       [(AGG OP atom CP) (if (member p-type (list 'aggr 'having))
+                             (aggop $1 (get-type $3) $3)
                              (error 'parser
                                     "aggregation expression not permitted in ~a" p-type))])
       (exp
@@ -162,6 +165,7 @@
 (define update-parser (build-parser 'update))
 (define select-parser (build-parser 'select))
 (define aggr-parser (build-parser 'aggr))
+(define having-parser (build-parser 'having))
 
 (define (parse-clause str clause-type p-args)
      (if (or (null? str) (not (non-empty-string? str)))
@@ -172,6 +176,7 @@
                         [(update) update-parser]
                         [(select) select-parser]
                         [(aggr) aggr-parser]
+                        [(having) having-parser]
                         [else (error 'parse-clause "unsupported clause type ~a" clause-type)])])
           (begin0
             (ast clause-type ((apply parser p-args) (lexer-thunk oip)))
@@ -185,6 +190,11 @@
   (parse-clause str 'select (list type-map)))
 (define (parse-aggr str type-map)
   (parse-clause str 'aggr (list type-map)))
+; Valid group-bys are the same as valid select for now
+(define (parse-groupby str type-map)
+  (parse-clause str 'select (list type-map)))
+(define (parse-having str type-map)
+  (parse-clause str 'having (list type-map)))
 
 (define empty-where
   (ast 'where null))
