@@ -163,8 +163,3 @@
                    [insert-q (build-insert-query cinfo v cols values)])
               (connect-and-exec-with-trigger cinfo v 'insert
                                              (λ (c) (query-exec c insert-q))))))))
-
-(fetch-impl (aggregate-impl (make-view-impl "../test.db" "test")
-                            "MAX(b)"
-                            #:groupby "a"))
-                            ;#:having "MAX(b) > 5"))

@@ -68,6 +68,7 @@
         (if (eq? type1 type2)
             (case p-type
               [(where) (condexp cop e1 e2)]
+              [(having) (condexp cop e1 e2)]
               [(select) (condexp cop e1 e2)]
               [(update)
                (if (eq? cop '=)
