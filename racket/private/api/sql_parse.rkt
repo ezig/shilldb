@@ -109,26 +109,26 @@
        [(condexp) $1]
        [(exp) (if (member p-type (list 'select 'aggr))
                   $1
-                  (error 'parser
+                  (error 'p-type
                          "illegal clause without condition for parser type ~a" p-type))]
        [(clause COMMA clause) (if (member p-type (list 'where 'having))
-                                  (error 'parser
+                                  (error p-type
                                          "illegal token , for parser type where")
                                   (clause 'COMMA $1 $3))]
        [(clause AND clause) (if (member p-type (list 'where 'having))
                                 (clause 'AND $1 $3)
-                                (error 'parser
+                                (error p-type
                                        "illegal token and for parser type ~a" p-type))]
        [(clause OR clause) (if (member p-type (list 'where 'having))
                                (clause 'OR $1 $3)
-                               (error 'parser
+                               (error p-type
                                       "illegal token or for parser type ~a" p-type))])   
       (atom
        [(STR) (atom 'str #f $1)]
        [(NUM) (atom 'num #f $1)]
        [(IDENTIFIER) (with-handlers ([exn:fail?
                                       (λ (e)
-                                        (error 'parser
+                                        (error p-type
                                                "undefined identifier ~a" $1))])
                        (atom (hash-ref type-map $1) #t $1))]
        [(OP exp CP) $2])
