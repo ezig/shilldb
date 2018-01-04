@@ -9,7 +9,7 @@
 (provide (struct-out view))
 (provide (struct-out atom))
 (provide (struct-out exp))
-(provide (struct-out cond))
+(provide (struct-out condexp))
 (provide (struct-out clause))
 (provide (struct-out ast))
 
@@ -23,7 +23,7 @@
 
 (struct atom (type is-id? val))
 (struct exp (op type e1 e2))
-(struct cond (cop e1 e2))
+(struct condexp (cop e1 e2))
 (struct clause (connector c1 c2))
 (struct ast (clause-type root))
 
@@ -76,7 +76,7 @@
        (if (eq? (ast-clause-type ast) 'where)
            (format "(~a) ~a (~a)" (aux c1) connector (aux c2))
            (format "~a, ~a" (aux c1) (aux c2)))]
-      [(cond cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
+      [(condexp cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
       [(exp op type e1 e2) (format "~a ~a ~a" (aux e1) op (aux e2))]
       [(atom type is-id? val)
        (if (and (not is-id?) (eq? type 'str))

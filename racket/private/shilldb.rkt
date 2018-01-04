@@ -4,15 +4,7 @@
          "shilldb-utils.rkt"
          (only-in "api/sql_parse.rkt"
                   parse-where)
-         (only-in "api/util.rkt"
-                  hash-union
-                  view-get-fks
-                  view-get-type-map
-                  view-get-tname-for-col
-                  ast
-                  fk-constraint
-                  [cond condexp]
-                  atom))
+         "api/util.rkt")
          
 (provide
  view-proxy

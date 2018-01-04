@@ -58,12 +58,13 @@
 (define/contract (aggregate-impl v cols #:groupby [groupby #f] #:having [having #f])
   (-> view? string?
       #:groupby (or/c string? (curry eq? #f))
-      #:having (or/c string? (curry eq? #f)))
+      #:having (or/c string? (curry eq? #f))
+      view?)
   values)
 
-(define/contract (where-impl v cond)
+(define/contract (where-impl v where-clause)
   (-> view? string? view?)
-  (let* ([new-q (restrict-where (view-where-q v) cond (view-get-type-map v))])
+  (let* ([new-q (restrict-where (view-where-q v) where-clause (view-get-type-map v))])
     (struct-copy view v [where-q new-q])))
 
 (define (join-impl v1 v2 jcond [prefix (list "lhs" "rhs")])

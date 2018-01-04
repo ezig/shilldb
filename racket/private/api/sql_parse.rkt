@@ -63,12 +63,12 @@
             [type2 (get-type e2)])
         (if (eq? type1 type2)
             (case p-type
-              [(where) (cond cop e1 e2)]
-              [(select) (cond cop e1 e2)]
+              [(where) (condexp cop e1 e2)]
+              [(select) (condexp cop e1 e2)]
               [(update)
                (if (eq? cop '=)
                    (if (and (atom? e1) (atom-is-id? e1) (member (atom-val e1) updatable))                    
-                       (cond cop e1 e2)
+                       (condexp cop e1 e2)
                        (error 'parser
                               "lhs ~a of assignment in update does not refer to updatable column" e1))
                    (error 'parser "illegal comparison ~a in update" cop))])
@@ -97,11 +97,11 @@
             (left ADDOP)
             (left MULOP))
      (grammar
-      (cond
-        [(OP cond CP) $2]
+      (condexp
+        [(OP condexp CP) $2]
         [(exp COMP exp) (parse-cond $2 $1 $3)])
       (clause
-       [(cond) $1]
+       [(condexp) $1]
        [(exp) (if (eq? p-type 'select)
                   $1
                   (error 'parser
@@ -137,7 +137,7 @@
   (define (aux t)
     (match t
       [(clause connector c1 c2) (append (aux c1) (aux c2))]
-      [(cond cop e1 e2) (list 'num)] ; comparison in select leads to bool column
+      [(condexp cop e1 e2) (list 'num)] ; comparison in select leads to bool column
       [(exp op type e1 e2) (list type)]
       [(atom type is-id? val) (list type)]))
   (let* ([root (ast-root ast)]
