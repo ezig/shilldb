@@ -56,11 +56,16 @@
                  [insertable insertable])))
 
 (define/contract (aggregate-impl v cols #:groupby [groupby #f] #:having [having #f])
-  (-> view? string?
-      #:groupby (or/c string? (curry eq? #f))
-      #:having (or/c string? (curry eq? #f))
+  (->* (view? string?)
+      (#:groupby (or/c string? (curry eq? #f))
+       #:having (or/c string? (curry eq? #f)))
       view?)
-  values)
+  (let* ([tm (validate-aggr cols (view-get-type-map v))]
+         [cols (map string-trim (string-split cols ","))])
+    (struct-copy view v
+                 [colnames cols]
+                 [table (table-replace-type-map (view-table v) tm)]
+                 [updatable (set-intersect (view-colnames v) cols)])))
 
 (define/contract (where-impl v where-clause)
   (-> view? string? view?)

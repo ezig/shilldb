@@ -5,6 +5,7 @@
 (provide empty-where)
 (provide validate-update)
 (provide validate-select)
+(provide validate-aggr)
 
 (require "util.rkt")
 (require parser-tools/yacc
@@ -56,7 +57,7 @@
           (atom-type e)))
 
 (define/contract (build-parser p-type)
-  (-> (one-of/c 'where 'update 'select) any/c)
+  (-> (one-of/c 'where 'update 'select 'aggr) any/c)
   (λ (type-map [updatable null])
     (define (parse-cond cop e1 e2)
       (let ([type1 (get-type e1)]
@@ -102,7 +103,7 @@
         [(exp COMP exp) (parse-cond $2 $1 $3)])
       (clause
        [(condexp) $1]
-       [(exp) (if (eq? p-type 'select)
+       [(exp) (if (member p-type (list 'select 'aggr))
                   $1
                   (error 'parser
                          "illegal clause without condition for parser type ~a" p-type))]
@@ -127,21 +128,29 @@
                                                "undefined identifier ~a" $1))])
                        (atom (hash-ref type-map $1) #t $1))]
        [(OP exp CP) $2])
+      (aggop
+       [(AGG OP atom CP) (if (eq? p-type 'aggr)
+                             (aggop $1 (atom-type $3) $3)
+                             (error 'parser
+                                    "aggregation expression not permitted in ~a" p-type))])
       (exp
        [(atom) $1]
+       [(aggop) $1]
        [(exp ADDOP exp) (parse-binop $2 $1 $3)]
        [(exp MULOP exp) (parse-binop $2 $1 $3)])))))
 
 (define/contract (select-to-type-map ast)
-  (-> (and/c ast? (λ (a) (eq? (ast-clause-type a) 'select))) hash?)
+  (-> ast? hash?)
   (define (aux t)
     (match t
       [(clause connector c1 c2) (append (aux c1) (aux c2))]
       [(condexp cop e1 e2) (list 'num)] ; comparison in select leads to bool column
       [(exp op type e1 e2) (list type)]
+      [(aggop _ type _) (list type)]
       [(atom type is-id? val) (list type)]))
   (let* ([root (ast-root ast)]
          [type-list (aux root)]
+         ; XXX fix this for non simple columns which don't behave well with names
          [colnames (map string-trim (string-split (ast-to-string ast) ","))])
     (make-immutable-hash (zip colnames type-list))))
 
@@ -152,6 +161,7 @@
 (define where-parser (build-parser 'where))
 (define update-parser (build-parser 'update))
 (define select-parser (build-parser 'select))
+(define aggr-parser (build-parser 'aggr))
 
 (define (parse-clause str clause-type p-args)
      (if (or (null? str) (not (non-empty-string? str)))
@@ -161,6 +171,7 @@
                         [(where) where-parser]
                         [(update) update-parser]
                         [(select) select-parser]
+                        [(aggr) aggr-parser]
                         [else (error 'parse-clause "unsupported clause type ~a" clause-type)])])
           (begin0
             (ast clause-type ((apply parser p-args) (lexer-thunk oip)))
@@ -172,6 +183,8 @@
   (parse-clause str 'update (list type-map updatable)))
 (define (parse-select str type-map)
   (parse-clause str 'select (list type-map)))
+(define (parse-aggr str type-map)
+  (parse-clause str 'aggr (list type-map)))
 
 (define empty-where
   (ast 'where null))
@@ -190,3 +203,7 @@
 (define (validate-select str type-map)
   (-> string? hash? hash?)
   (select-to-type-map (parse-select str type-map)))
+
+(define (validate-aggr str type-map)
+  (-> string? hash? hash?)
+  (select-to-type-map (parse-aggr str type-map)))

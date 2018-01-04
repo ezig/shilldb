@@ -8,6 +8,7 @@
 (provide (struct-out join-table))
 (provide (struct-out view))
 (provide (struct-out atom))
+(provide (struct-out aggop))
 (provide (struct-out exp))
 (provide (struct-out condexp))
 (provide (struct-out clause))
@@ -22,6 +23,7 @@
 (struct view (conn-info table colnames where-q ins updatable insertable deletable))
 
 (struct atom (type is-id? val))
+(struct aggop (op type a))
 (struct exp (op type e1 e2))
 (struct condexp (cop e1 e2))
 (struct clause (connector c1 c2))
@@ -56,11 +58,10 @@
     [(aggr-table tm _ _ _ _) tm]))
     
 (define (table-replace-type-map t tm)
-  (let ([t (view-table t)])
-    (match t
-      [(table _ _ _ _ _) (struct-copy table t [type-map tm])]
-      [(join-table _ _ _ _) (struct-copy join-table t [type-map tm])]
-      [(aggr-table _ _ _ _ _) (struct-copy aggr-table t [type-map tm])])))
+  (match t
+    [(table _ _ _ _ _) (struct-copy table t [type-map tm])]
+    [(join-table _ _ _ _) (struct-copy join-table t [type-map tm])]
+    [(aggr-table _ _ _ _ _) (struct-copy aggr-table t [type-map tm])]))
   
 (define (view-get-colnames v)
    (match (view-table v)
@@ -78,6 +79,7 @@
            (format "~a, ~a" (aux c1) (aux c2)))]
       [(condexp cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
       [(exp op type e1 e2) (format "~a ~a ~a" (aux e1) op (aux e2))]
+      [(aggop op _ a) (format "~a(~a)" op (aux a))]
       [(atom type is-id? val)
        (if (and (not is-id?) (eq? type 'str))
            (format "'~a'" val)
