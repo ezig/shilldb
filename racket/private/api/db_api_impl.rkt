@@ -40,8 +40,19 @@
 ; check if columns are within the views as a contract
 (define/contract (select-impl v cols)
   (-> view? string? view?)
-  (let* ([tm (validate-select cols (view-get-type-map v))]
-         [cols (map string-trim (string-split cols ","))]
+  (let* ([tm (validate-select cols (view-get-type-map v))])
+    (select-aggr-common v cols tm)))
+
+(define/contract (aggregate-impl v cols #:groupby [groupby #f] #:having [having #f])
+  (->* (view? string?)
+      (#:groupby (or/c string? (curry eq? #f))
+       #:having (or/c string? (curry eq? #f)))
+      view?)
+  (let ([tm (validate-aggr cols (view-get-type-map v))])
+    (select-aggr-common v cols tm)))
+
+(define (select-aggr-common v cols tm)
+  (let* ([cols (map string-trim (string-split cols ","))]
          [insertable (if (view-insertable v)
                          (let* ([cols-unique? (list-unique? cols)]
                                 [cols-simple? (subset? cols (view-colnames v))]
@@ -54,19 +65,7 @@
                  [table (table-replace-type-map (view-table v) tm)]
                  [updatable (set-intersect (view-colnames v) cols)]
                  [insertable insertable])))
-
-(define/contract (aggregate-impl v cols #:groupby [groupby #f] #:having [having #f])
-  (->* (view? string?)
-      (#:groupby (or/c string? (curry eq? #f))
-       #:having (or/c string? (curry eq? #f)))
-      view?)
-  (let* ([tm (validate-aggr cols (view-get-type-map v))]
-         [cols (map string-trim (string-split cols ","))])
-    (struct-copy view v
-                 [colnames cols]
-                 [table (table-replace-type-map (view-table v) tm)]
-                 [updatable (set-intersect (view-colnames v) cols)])))
-
+  
 (define/contract (where-impl v where-clause)
   (-> view? string? view?)
   (let* ([new-q (restrict-where (view-where-q v) where-clause (view-get-type-map v))])
