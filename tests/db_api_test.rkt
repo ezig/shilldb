@@ -11,6 +11,7 @@
                   [delete-impl delete]
                   [fetch-impl fetch]
                   [select-impl select]
+                  [aggregate-impl aggregate]
                   [join-impl join]
                   [make-view-impl make-view]))
 
@@ -48,7 +49,7 @@
   (cdr (fetch v)))
 
 (define (check-rows v expected)
-  (check-equal? expected (fetch-rows v)))
+  (check-equal? (fetch-rows v) expected))
 
 (define (insert-many v cols rows)
   (map (lambda (r) (insert v cols r)) rows))
@@ -87,6 +88,34 @@
      (λ (v)
          (select v "FAIL"))
      "select: undefined identifier FAIL")))
+
+  (test-suite
+   "Tests for aggregate"
+   (test-case
+    "Simple aggregation works"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert-test-names v)
+         (check-rows (aggregate v "SUM(id)") '((10)))))))
+   (test-case
+    "Simple group by works"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert-many v "name" '(("Ezra") ("Ezra") ("Christos")))
+         (check-rows (aggregate v "name, COUNT(name)" #:groupby "name")
+                     '(("Christos" 1) ("Ezra" 2)))))))
+   (test-case
+    "Simple having group by works"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert-many v "name" '(("Ezra") ("Ezra") ("Christos")))
+         (check-rows (aggregate v "name, COUNT(name)"
+                                #:groupby "name"
+                                #:having "count(name) > 1")
+                     '(("Ezra" 2))))))))
   
   (test-suite
     "Tests for insert"
