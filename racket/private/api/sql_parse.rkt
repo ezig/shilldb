@@ -134,7 +134,7 @@
        [(OP exp CP) $2])
       (aggop
        [(AGG OP atom CP) (if (member p-type (list 'aggr 'having))
-                             (aggop $1 (get-type $3) $3)
+                             (aggop $1 'num $3) ; Type of aggregation is always number
                              (error 'parser
                                     "aggregation expression not permitted in ~a" p-type))])
       (exp
