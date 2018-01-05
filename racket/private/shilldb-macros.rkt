@@ -4,7 +4,8 @@
 
 
 (provide view/c
-         ->j)
+         ->j
+         constraint/c)
 
 (require (for-syntax syntax/parse
                      (only-in racket/syntax
@@ -30,6 +31,8 @@ suggested form for view/c
 (begin-for-syntax
   (define-syntax-class jarg
     #:description "join arg"
+    (pattern [((~literal view/c) mod ...) #:groups groups:id ...]
+             #:with ctc:expr #'(jview/c mod ...))
     (pattern [ctc:expr #:groups groups:id ...])
     (pattern ctc:expr
              #:with (groups:id ...) '()))
@@ -156,19 +159,27 @@ suggested form for view/c
     [(_ p:privilege ...)
      #'(view-proxy (list (privilege-parse p) ...) #f)]))
 
+(define-syntax (jview/c stx)
+  (syntax-parse stx
+    [(_ p:privilege ...)
+     #'(view-proxy (list (privilege-parse p) ...) #t)]))
+
 (module+ test
   (define example/c
-  (->j ([X #:post (λ (v) (where v "a = 3")) #:with (view/c +fetch +where)])
-       [(view/c +join) #:groups X]
-       [(view/c +join) #:groups X]
+  (->j ([X #:post (λ (v) v) #:with (view/c +where)])
+       [(view/c +join +fetch) #:groups X]
+       [(view/c +join +fetch) #:groups X]
        any))
 
   (define/contract (f x y)
     example/c
     (fetch (join x y "")))
 
-  (f (open-view "test.db" "students") (open-view "test.db" "test")))
-
+  (define/contract x
+    (view/c +join)
+    (open-view "test.db" "test"))
+  
+  (f (open-view "test.db" "test") (open-view "test.db" "students")))
 
 #|
 suggested form for join-constraint/c

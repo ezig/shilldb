@@ -29,6 +29,7 @@
                     [update #:mutable]
                     [insert #:mutable]
                     [delete #:mutable]
+                    [join-derive #:mutable]
                     [join-constraint #:mutable #:auto])
   #:auto-value values)
 
@@ -40,12 +41,13 @@
   (define (update v query pre [where ""]) (update-impl (shill-view-view (pre v)) query where))
   (define (insert v cols values pre) (insert-impl (shill-view-view (pre v)) cols values))
   (define (delete v pre) (delete-impl (shill-view-view (pre v))))
+  (define (join-derive v1 v2 jcond) values)
   ;(define (get-join-details pre-fun post-fun out-ctc-fun) (values pre-fun post-fun out-ctc-fun))
 
-  (shill-view view fetch where select mask update insert delete))
+  (shill-view view fetch where select mask update insert delete join-derive))
 
 
-(struct view-proxy (full-details param)
+(struct view-proxy (full-details join-skip-layer)
   #:property prop:contract
   (build-contract-property
    #:name
@@ -57,6 +59,7 @@
    #:projection
    (λ (ctc)
      (define full-details (view-proxy-full-details ctc))
+     (define join-skip-layer (view-proxy-join-skip-layer ctc))
      (λ (blame)
        (define (redirect-proc accessor-contract)
          (λ (view field-value)
@@ -70,7 +73,15 @@
          (define update/c (make-update/c val ctc (list-assoc "update" full-details)))
          (define delete/c (make-delete/c val ctc (list-assoc "delete" full-details)))
          (define insert/c (make-insert/c val ctc (list-assoc "insert" full-details)))
-         (define join/c (make-join/c (list-assoc "join" full-details)))
+         (define join-constraint/c (make-join/c (list-assoc "join" full-details)))
+
+         (define new-derive ((contract-projection ctc) blame))
+         (define join-derive (λ (s v)
+                               (if join-skip-layer
+                                   v
+                                   (λ (v1 v2 jcond)
+                                     (compose new-derive (v v1 v2 jcond))))))
+         
          ;(define get-join-details/c (make-get-join-details/c ctc (list-assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
@@ -89,8 +100,10 @@
                              set-shill-view-delete! mutator-redirect-proc
                              shill-view-insert (redirect-proc insert/c)
                              set-shill-view-insert! mutator-redirect-proc
-                             shill-view-join-constraint (redirect-proc join/c)
-                             set-shill-view-join-constraint! mutator-redirect-proc                            
+                             shill-view-join-constraint (redirect-proc join-constraint/c)
+                             set-shill-view-join-constraint! mutator-redirect-proc
+                             shill-view-join-derive join-derive
+                             set-shill-view-join-derive! mutator-redirect-proc
                              impersonator-prop:contracted ctc))))))
 
 (define (make-fetch/c view ctc details)
@@ -328,6 +341,7 @@
                 val
                 "not one of the expected join arguments")))))))
 
+  ; if no derive is given, this needs to get the join-derive off of the val I think
   (struct record-arg/c (post-tf derive/c)
     #:property prop:contract
     (build-contract-property
@@ -340,19 +354,18 @@
            (set-box! store (cons (list val post-tf derive/c) (unbox store)))
            val)))))
 
-  (struct apply-post/c (v1 v2 jcond blame)
+  (struct apply-post/c (v1 v2 jcond)
     #:property prop:contract
     (build-contract-property
      #:projection
      (λ (ctc)
        (λ (blame)
          (λ (val)
-           (define-values (v1 v2 jcond real-blame)
+           (define-values (v1 v2 jcond)
              (values
               (apply-post/c-v1 ctc)
               (apply-post/c-v2 ctc)
-              (apply-post/c-jcond ctc)
-              (apply-post/c-blame ctc)))
+              (apply-post/c-jcond ctc)))
            ; stick this stuff in a struct so it's nicer
            (define (get v)
              (first (memf (λ (x) (equal? (car x) v)) (unbox store))))
@@ -360,9 +373,10 @@
            (define details1 (get v1))
            (define details2 (get v2))
            
-           ((compose (cadr details2) (cadr details1))
-            (((contract-projection (caddr details2)) real-blame)
-             (((contract-projection (caddr details1)) real-blame) val))))))))
+           ((compose (cadr details2)
+                     (cadr details1)
+                     ((shill-view-join-derive v2) v1 v2 jcond)
+                     ((shill-view-join-derive v1) v1 v2 jcond)) val))))))
   
   (struct constraint-args/c ()
     #:property prop:contract
@@ -374,8 +388,21 @@
            (->i ([v1 (valid-arg/c)]
                  [v2 (valid-arg/c)]
                  [jcond any/c])
-                [res (v1 v2 jcond) (apply-post/c v1 v2 jcond blame)]))
+                [res (v1 v2 jcond) (apply-post/c v1 v2 jcond)]))
          (define new-constraint ((contract-projection new-constraint/c) blame))
+
+         (define new-derive
+           (λ (s v)
+             (λ (v1 v2 jcond)
+               (define (get v)
+                 (first (memf (λ (x) (equal? (car x) v)) (unbox store))))
+               (define details1 (get v1))
+               (define details2 (get v2))
+
+               (compose ((contract-projection (caddr details2)) blame)
+                        ((contract-projection (caddr details1)) blame)
+                        (v v1 v2 jcond)))))
+         
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
            ; No constraint on self, just use `values`
@@ -383,6 +410,8 @@
            (impersonate-struct val                              
                                shill-view-join-constraint (λ (s v) (compose new-constraint v))
                                set-shill-view-join-constraint! mutator-redirect-proc
+                               shill-view-join-derive new-derive
+                               set-shill-view-join-derive! mutator-redirect-proc
                                impersonator-prop:contracted (and/c (value-contract val) ctc)))))))
   (values (constraint-args/c) record-arg/c))
 
