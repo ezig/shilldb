@@ -13,6 +13,7 @@
                   [select-impl select]
                   [aggregate-impl aggregate]
                   [join-impl join]
+                  [mask-impl mask]
                   [make-view-impl make-view]))
 
 (define db-path "db_api_test.db")
@@ -88,6 +89,41 @@
      (λ (v)
          (select v "FAIL"))
      "select: undefined identifier FAIL")))
+
+  (test-suite
+   "Tests for mask"
+   (test-case
+    "Mask behaves like select in simple case"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert v "name" '("Ezra"))
+         (check-rows (mask v "id") '((1)))))))
+   (test-case
+    "Mask does not allow complex columns"
+    (test-exec-expect-exn
+     (λ (v)
+       (mask v "id + 2"))
+     "contract violation"))
+   (test-case
+    "Mask does not allow nonsense columns not in the underlying table"
+    (test-exec-expect-exn
+     (λ (v)
+       (mask v "FAIL"))
+     "contract violation"))
+   (test-case
+    "Mask fails when it would mask away every column in view"
+    (test-exec-expect-exn
+     (λ (v)
+       (mask (select v "name") "id"))
+     "no columns left in view"))
+   (test-case
+    "Mask works properly when not all columns in view"
+    (test-exec
+     (λ (v)
+       (begin
+         (insert v "name" '("Ezra"))
+         (check-rows (mask (select v "id") "name, id") '((1))))))))
 
   (test-suite
    "Tests for aggregate"

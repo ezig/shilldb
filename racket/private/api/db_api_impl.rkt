@@ -39,9 +39,24 @@
 
 ; check if columns are within the views as a contract
 (define/contract (select-impl v cols)
-  (-> view? string? view?)
+  (-> view? non-empty-string? view?)
   (let* ([tm (validate-select cols (view-get-type-map v))])
     (select-aggr-common v cols tm)))
+
+; Just select the columns that are actually in the view
+(define/contract (mask-impl v cols)
+  (->i ([v view?]
+        [cols (v)
+              (and/c string? (λ (c) (let ([cns (view-get-colnames v)])
+                                      (andmap (λ (n) (member n cns))
+                                              (map string-trim (string-split c ","))))))])
+       [res view?])
+  (let ([cols-to-select (string-join (set-intersect (view-colnames v)
+                                                    (map string-trim (string-split cols ",")))
+                                     ",")])
+    (unless (non-empty-string? cols-to-select)
+      (error "resulted in no columns left in view"))
+    (select-impl v cols-to-select)))
 
 (define/contract (aggregate-impl v cols #:groupby [groupby #f] #:having [having #f])
   (->* (view? string?)
