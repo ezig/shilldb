@@ -14,6 +14,7 @@
  where
  join
  select
+ mask
  fetch
  update
  insert
@@ -24,6 +25,7 @@
                     [fetch #:mutable]
                     [where #:mutable]
                     [select #:mutable]
+                    [mask #:mutable]
                     [update #:mutable]
                     [insert #:mutable]
                     [delete #:mutable]
@@ -34,12 +36,13 @@
   (define (fetch v pre) (fetch-impl (shill-view-view (pre v))))
   (define (where v w) (build-view (where-impl (shill-view-view v) w)))
   (define (select v c) (build-view (select-impl (shill-view-view v) c)))
+  (define (mask v c) (build-view (mask-impl (shill-view-view v) c)))
   (define (update v query pre [where ""]) (update-impl (shill-view-view (pre v)) query where))
   (define (insert v cols values pre) (insert-impl (shill-view-view (pre v)) cols values))
   (define (delete v pre) (delete-impl (shill-view-view (pre v))))
   ;(define (get-join-details pre-fun post-fun out-ctc-fun) (values pre-fun post-fun out-ctc-fun))
 
-  (shill-view view fetch where select update insert delete))
+  (shill-view view fetch where select mask update insert delete))
 
 
 (struct view-proxy (full-details param)
@@ -62,6 +65,8 @@
          (define fetch/c (make-fetch/c val ctc (list-assoc "fetch" full-details)))
          (define where/c (make-where/c (list-assoc "where" full-details) full-details))
          (define select/c (make-select/c (list-assoc "select" full-details) full-details))
+         ; Just use the select privileges for mask
+         (define mask/c (make-mask/c (list-assoc "select" full-details) full-details))
          (define update/c (make-update/c val ctc (list-assoc "update" full-details)))
          (define delete/c (make-delete/c val ctc (list-assoc "delete" full-details)))
          (define insert/c (make-insert/c val ctc (list-assoc "insert" full-details)))
@@ -76,6 +81,8 @@
                              set-shill-view-where! mutator-redirect-proc
                              shill-view-select (redirect-proc select/c)
                              set-shill-view-select! mutator-redirect-proc
+                             shill-view-mask (redirect-proc mask/c)
+                             set-shill-view-mask! mutator-redirect-proc
                              shill-view-update (redirect-proc update/c)
                              set-shill-view-update! mutator-redirect-proc
                              shill-view-delete (redirect-proc delete/c)
@@ -160,6 +167,12 @@
          [(= dl 4)
           (->* (shill-view? (and/c string? (third details))) #:pre (second details) (fourth details))])
   "select"))
+
+(define (make-mask/c details full-details)
+  (enhance-blame/c
+   (cond [(= 2 (length details))
+          (->* (shill-view? string?) #:pre (second details) (view-proxy full-details #f))])
+  "mask"))
 
 (define (make-update/c view ctc details)
   (define (update-pre/c pre)
@@ -247,6 +260,8 @@
 (define (where view w) ((shill-view-where view) view w))
 
 (define (select view c) ((shill-view-select view) view c))
+
+(define (mask view c) ((shill-view-mask view) view c))
 
 (define (update v query [where ""]) ((shill-view-update v) v query values where))
 
