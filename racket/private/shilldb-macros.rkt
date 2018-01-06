@@ -16,7 +16,9 @@
                               cons?
                               empty?
                               curry
-                              flatten))
+                              flatten
+                              last)
+                     (only-in "api/util.rkt" zip))
          (except-in "shilldb.rkt" view/c))
 
 #|
@@ -114,7 +116,7 @@ suggested form for view/c
           "update" (list '(#:restrict 0))
           "insert" (list '(#:restrict 0))
           "delete" (list '(#:restrict 0))
-          "aggregate" (list '(#:having 0))))
+          "aggregate" (list '(#:having 0) '(#:with 1))))
   
   (define-syntax-class privilege-name
     #:description "primitive privilege"
@@ -135,11 +137,11 @@ suggested form for view/c
     (pattern (name:keyword val:expr)))
   
   (define (validate-modifiers priv-name ks vs priv-stx)
+    (define valid-mods (hash-ref valid-modifiers priv-name))
     (define (check-valid-names)
-      (let ([valid-mods (map car (hash-ref valid-modifiers priv-name))])
-        (for-each (λ (k) (unless (member (syntax->datum k) valid-mods)
-                           (raise-syntax-error 'view/c (format "invalid modifier for privilege ~a" priv-name) priv-stx k)))
-                  ks)))
+      (for-each (λ (k) (unless (assoc (syntax->datum k) valid-mods)
+                         (raise-syntax-error 'view/c (format "invalid modifier for privilege ~a" priv-name) priv-stx k)))
+                ks))
     (define (check-duplicates)      
       (foldl (λ (hd acc)
                (let ([hd-datum (syntax->datum hd)])
@@ -147,11 +149,24 @@ suggested form for view/c
                      (raise-syntax-error 'view/c (format "duplicate modifier for privilege ~a" priv-name) priv-stx hd)
                      (cons hd-datum acc))))
              null ks))
-    
+    (define (sort-mods)
+      (sort (zip ks vs) <
+            #:key (λ (x)
+                    (cadr (assoc
+                           (syntax->datum (car x))
+                           valid-mods)))))
+    (define (fill-missing-mods mods)
+      (define max-mod (cadr (assoc (syntax->datum (car (last mods))) valid-mods)))
+      (for/list  ([idx (in-range (+ 1 max-mod))])
+        (let* ([name-for-idx (car (findf (λ (x) (= (cadr x) idx)) valid-mods))]
+               [given-mod (assoc name-for-idx (map (λ (m) (cons (syntax->datum (car m)) (cdr m))) mods))])
+          (if given-mod
+              (cdr given-mod)
+              #'#f))))
     (begin
       (check-valid-names)
       (check-duplicates)
-      vs))
+      (fill-missing-mods (sort-mods))))
   
   (define-syntax-class privilege
     #:description "privilege"
@@ -194,12 +209,14 @@ suggested form for view/c
        any))
 
   (define/contract x
-    (view/c +fetch [+aggregate #:having "max(b) > 10"])
+    (view/c [+aggregate #:with (view/c +fetch) ])
     (open-view "test.db" "test"))
 
   (fetch (aggregate x "max(b)" #:groupby "a" #:having "max(b) < 50")))
       
   ;(f (open-view "test.db" "test") (open-view "test.db" "students")))
+
+(view/c [+aggregate #:with (view/c +fetch) #:having "max(b) > 10"])
 
 #|
 suggested form for join-constraint/c
