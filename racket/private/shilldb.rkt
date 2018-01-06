@@ -161,9 +161,22 @@
   "mask"))
 
 (define (make-aggregate/c details full-details)
+  (define (having/c new-clause)
+   (make-contract
+     #:projection
+     (λ (b)
+       (λ (old-having)
+         (if old-having
+             (format "~a and ~a" old-having new-clause)
+             new-clause)))))
+  (define dl (length details))
   (enhance-blame/c
-   (cond [(= 2 (length details))
+   (cond [(= 2 dl)
           (->* (shill-view? string? (or/c boolean? string?) (or/c boolean? string?))
+               #:pre (second details) (view-proxy full-details #f))]
+         [(= 3 dl)
+          (->* (shill-view? string? (or/c boolean? string?)
+                            (and (or/c boolean? string?) (having/c (third details))))
                #:pre (second details) (view-proxy full-details #f))])
   "aggregate"))
 
