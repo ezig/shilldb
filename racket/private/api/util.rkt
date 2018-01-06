@@ -74,7 +74,7 @@
   (define (aux t)
     (match t
       [(clause connector c1 c2)
-       (if (eq? (ast-clause-type ast) 'where)
+       (if (member (ast-clause-type ast) (list 'where 'having))
            (format "(~a) ~a (~a)" (aux c1) connector (aux c2))
            (format "~a, ~a" (aux c1) (aux c2)))]
       [(condexp cop e1 e2) (format "~a ~a ~a" (aux e1) cop (aux e2))]
