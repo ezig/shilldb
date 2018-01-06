@@ -43,8 +43,8 @@
    ["," 'COMMA]
    ["(" 'OP]
    [")" 'CP]
-   ["and" 'AND]
-   ["or" 'OR]
+   [(:or "and" "AND") 'AND]
+   [(:or "or" "OR") 'OR]
    [aggr (token-AGG (string->symbol (string-upcase lexeme)))]
    [identifier (token-IDENTIFIER lexeme)]
    [(:: #\' (:* any-char) #\')
