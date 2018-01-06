@@ -357,10 +357,19 @@
   (struct record-arg/c (post-tf derive/c)
     #:property prop:contract
     (build-contract-property
+     #:first-order
+     (λ (ctc)
+       (λ (val)
+         (not (in-store? val))))
      #:projection
      (λ (ctc)
        (λ (blame)
          (λ (val)
+           (unless (contract-first-order-passes? ctc val)
+             (raise-blame-error blame
+                                val
+                                "two views appeared together in multiple groups with different modifiers"))
+
            (define post-tf (record-arg/c-post-tf ctc))
            (define derive/c (record-arg/c-derive/c ctc))
            (add-to-store (store-entry val post-tf derive/c))
