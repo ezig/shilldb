@@ -16,24 +16,6 @@
                   [mask-impl mask]
                   [make-view-impl make-view]))
 
-(define db-path "db_api_test.db")
-(define test-user-schema "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
-(define test-posts-schema "CREATE TABLE posts (userid INTEGER DEFAULT 0 NOT NULL, title TEXT, post TEXT)")
-
-(define (create-db)
-  (begin
-      (display-to-file "" db-path))
-      (create-schema))
-
-(define (create-schema)
-  (let ([conn (sqlite3-connect #:database db-path)])
-    (begin
-        (query-exec conn test-user-schema)
-        (query-exec conn test-posts-schema))
-        (disconnect conn)))
-
-(define (cleanup-db)
-  (delete-file db-path))
 
 (define (test-exec testfun)
   (around
