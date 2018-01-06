@@ -166,9 +166,11 @@
      #:projection
      (λ (b)
        (λ (old-having)
-         (if old-having
-             (format "~a and ~a" old-having new-clause)
-             new-clause)))))
+         (if new-clause
+             (if old-having
+                 (format "~a and ~a" old-having new-clause)
+                 new-clause)
+             old-having)))))
   (define dl (length details))
   (enhance-blame/c
    (cond [(= 2 dl)
@@ -177,7 +179,11 @@
          [(= 3 dl)
           (->* (shill-view? string? (or/c boolean? string?)
                             (and (or/c boolean? string?) (having/c (third details))))
-               #:pre (second details) (view-proxy full-details #f))])
+               #:pre (second details) (view-proxy full-details #f))]
+         [(= 4 dl)
+          (->* (shill-view? string? (or/c boolean? string?)
+                            (and (or/c boolean? string?) (having/c (third details))))
+               #:pre (second details) (fourth details))])
   "aggregate"))
 
 (define (make-update/c view ctc details)
