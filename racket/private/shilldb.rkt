@@ -46,7 +46,6 @@
   (define (insert v cols values pre) (insert-impl (shill-view-view (pre v)) cols values))
   (define (delete v pre) (delete-impl (shill-view-view (pre v))))
   (define (join-derive v1 v2 jcond) values)
-  ;(define (get-join-details pre-fun post-fun out-ctc-fun) (values pre-fun post-fun out-ctc-fun))
 
   (shill-view view fetch where select mask aggregate update insert delete join-derive))
 
@@ -87,7 +86,6 @@
                                    (λ (v1 v2 jcond)
                                      (compose new-derive (v v1 v2 jcond))))))
          
-         ;(define get-join-details/c (make-get-join-details/c ctc (list-assoc "join" full-details)))
          (unless (contract-first-order-passes? ctc val)
            (raise-blame-error blame val '(expected "a view" given "~e") val))
          (impersonate-struct val
@@ -133,38 +131,6 @@
    (cond [(= (length details) 2)
           (->* (any/c) #:pre (second details) any)])
    "join"))
-
-#|(define (make-get-join-details/c ctc details)
-  (define (compose-pres p1 p2)
-    (λ (v1 v2 jc)
-      (and (p1 v1 v2 jc) (p2 v1 v2 jc))))
-  (define (compose-posts inner outer)
-    (λ (v1 v2 jc)
-      (let ([p1 (inner v1 v2 jc)]
-            [p2 (outer v1 v2 jc)])
-        (λ (v) (p2 (p1 v))))))
-  (define (compose-ctcs cf1 cf2)
-    (λ (v1 v2 jc)
-      (and/c (cf1 v1 v2 jc) (cf2 v1 v2 jc))))
-  (define (join-details/c pre post out-ctc)
-    (make-contract
-     #:projection
-     (λ (b)
-       (λ (gjd)
-         (λ (new-pre new-post new-out-ctc)
-           (gjd (compose-pres pre new-pre)
-                (compose-posts post new-post)
-                (compose-ctcs out-ctc new-out-ctc)))))))
-  (define dl (length details))
-  (define (const-three-arg v) (λ (x y z) v))
-  (cond [(= dl 3)
-         (join-details/c (third details) (const-three-arg values) (const-three-arg any/c))]
-        [(= dl 4)
-         (join-details/c (third details) (fourth details) (const-three-arg any/c))]
-        [(= dl 5)
-         (join-details/c (third details) (fourth details) (fifth details))]
-        [else
-         (join-details/c (const-three-arg #t) (const-three-arg values) (const-three-arg any/c))]))|#
 
 (define (make-where/c details full-details)
   (define dl (length details))
@@ -254,24 +220,6 @@
                       #:pre (second details) any) (insert-pre/c (third details)))])
   "insert"))
 
-
-#| (define (make-pre-join/c view ctc details)
-   (define (pre-join-pre/c pre)
-     (make-contract
-      #:projection
-      (λ (b)
-        (λ (pj)
-          (λ (v p)
-            (pj view (λ (v) (p (with-contract b #:result ctc (pre v))))))))))
-   (define dl (length details))
-   (enhance-blame/c
-    (cond [(= dl 2)
-           (->* (shill-view? procedure?) #:pre (second details) any)]
-          [(>= dl 3)
-           (and/c (->* (shill-view? procedure?) #:pre (second details) any) (pre-join-pre/c (third details)))])
-    "join"))|#
-   
-
 (define (view/c
          #:fetch [f (list "fetch" #f)]
          #:where [w (list "where" #f)]
@@ -298,21 +246,6 @@
 (define (insert v cols vals) ((shill-view-insert v) v cols vals values))
 
 (define (delete v) ((shill-view-delete v) v values))
-
-#|(define (join v1 v2 jcond)
-  (define id-transform (λ (v1 v2 jc) values))
-  (define (get-join-details v) ((shill-view-get-join-details v) (λ (v1 v2 jc) #t) (λ (v1 v2 jc) values) (λ (v1 v2 jc) any/c)))
-  (define (get-pre-post-out v)
-    (match (map (λ (f) (apply f (list v1 v2 jcond))) (call-with-values (λ () (get-join-details v)) list))
-      [(list pre post out) (values pre post out)]))
-  (let-values ([(v1-pre v1-post v1-out/c) (get-pre-post-out v1)]
-               [(v2-pre v2-post v2-out/c) (get-pre-post-out v2)])
-    (define/contract (build-intermediate v1 v2)
-      (-> shill-view? shill-view? (and/c v1-out/c v2-out/c))
-      (build-view (join-impl (shill-view-view v1) (shill-view-view v2) jcond)))
-    (if (and v1-pre v2-pre)
-        (v2-post (v1-post (build-intermediate v1 v2)))
-        #f))); FIXME|#
 
 (define (join v1 v2 [jcond ""])
   (define (real-join v1 v2 jcond)
