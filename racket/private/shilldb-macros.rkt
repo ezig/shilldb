@@ -123,6 +123,7 @@ suggested form for view/c
     (pattern (~literal +insert))
     (pattern (~literal +where))
     (pattern (~literal +select))
+    (pattern (~literal +aggregate))
     (pattern (~literal +join)))
   
   (define (privilege-stx->string name)
@@ -191,11 +192,13 @@ suggested form for view/c
        [(view/c +join +fetch +where) #:groups X]
        any))
 
-  (define/contract (f x y)
-    example/c
-    (fetch (join x y "")))
-  
-  (f (open-view "test.db" "test") (open-view "test.db" "students")))
+  (define/contract x
+    (view/c +fetch +aggregate)
+    (open-view "test.db" "test"))
+
+  (fetch (aggregate x "max(a)")))
+      
+  ;(f (open-view "test.db" "test") (open-view "test.db" "students")))
 
 #|
 suggested form for join-constraint/c
