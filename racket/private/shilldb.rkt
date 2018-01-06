@@ -327,6 +327,18 @@
 (define (make-join-group)
   (define store (box '()))
 
+  (struct store-entry (v post derive))
+  
+  (define (in-store? val)
+    (memf (λ (e) (equal? (store-entry-v e) val)) (unbox store)))
+
+  ; Only call if certain in-box? is not #f
+  (define (get-store-entry v)
+    (first (in-store? v)))
+
+  (define (add-to-store entry)
+    (set-box! store (cons entry (unbox store))))
+  
   (struct valid-arg/c ()
     #:property prop:contract
     (build-contract-property
@@ -334,7 +346,7 @@
      (λ (ctc)
        (λ (blame)
          (λ (val)
-           (if (memf (λ (v) (equal? (car v) val)) (unbox store))
+           (if (in-store? val)
                val
                (raise-blame-error
                 blame
@@ -351,7 +363,7 @@
          (λ (val)
            (define post-tf (record-arg/c-post-tf ctc))
            (define derive/c (record-arg/c-derive/c ctc))
-           (set-box! store (cons (list val post-tf derive/c) (unbox store)))
+           (add-to-store (store-entry val post-tf derive/c))
            val)))))
 
   (struct apply-post/c (v1 v2 jcond)
@@ -366,15 +378,11 @@
               (apply-post/c-v1 ctc)
               (apply-post/c-v2 ctc)
               (apply-post/c-jcond ctc)))
-           ; stick this stuff in a struct so it's nicer
-           (define (get v)
-             (first (memf (λ (x) (equal? (car x) v)) (unbox store))))
-
-           (define details1 (get v1))
-           (define details2 (get v2))
+           (define entry1 (get-store-entry v1))
+           (define entry2 (get-store-entry v2))
            
-           ((compose (cadr details2)
-                     (cadr details1)
+           ((compose (store-entry-post entry2)
+                     (store-entry-post entry1)
                      ((shill-view-join-derive v2) v1 v2 jcond)
                      ((shill-view-join-derive v1) v1 v2 jcond)) val))))))
   
@@ -393,20 +401,18 @@
 
          (define new-derive
            (λ (s v)
-             (λ (v1 v2 jcond)
-               (define (get v)
-                 (first (memf (λ (x) (equal? (car x) v)) (unbox store))))
-               (define details1 (get v1))
-               (define details2 (get v2))
+             (λ (v1 v2 jcond)              
+               (define entry1 (get-store-entry v1))
+               (define entry2 (get-store-entry v2))
 
-               (compose ((contract-projection (caddr details2)) blame)
-                        ((contract-projection (caddr details1)) blame)
+               (compose ((contract-projection (store-entry-derive entry2)) blame)
+                        ((contract-projection (store-entry-derive entry1)) blame)
                         (v v1 v2 jcond)))))
          
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
            ; No constraint on self, just use `values`
-           (set-box! store (cons (list val values any/c) (unbox store)))
+           (add-to-store (store-entry val values any/c))
            (impersonate-struct val                              
                                shill-view-join-constraint (λ (s v) (compose new-constraint v))
                                set-shill-view-join-constraint! mutator-redirect-proc
