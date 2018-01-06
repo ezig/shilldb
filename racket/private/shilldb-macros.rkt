@@ -37,6 +37,23 @@ suggested form for view/c
     (pattern ctc:expr
              #:with (groups:id ...) '()))
 
+  ; XXX since there are only two modifiers for join groups, enumerating the
+  ; the 5 different cases here is easy, but this does not scale up well.
+  ; If more modifiers are added, should take a more robust approach like
+  ; is used with privilege modifiers
+  (define-syntax-class join-group
+    #:description "join group"
+    #:attributes (name post derive)
+    (pattern name:id
+             #:with post #f
+             #:with derive #f)
+    (pattern [name:id #:post post:expr #:with derive:expr])
+    (pattern [name:id #:with derive:expr #:post post:expr])
+    (pattern [name:id #:post post:expr]
+             #:with derive #f)
+    (pattern [name:id #:with derive:expr]
+             #:with post #f))
+
   (define (flatten-once lst)
     (apply append (map (lambda (e) (if (cons? e) e (list e))) lst)))
 
@@ -77,7 +94,10 @@ suggested form for view/c
                                                      #`any/c
                                                      #`(#,c
                                                         #,(car (hash-ref chash d))
-                                                        #,(cdr (hash-ref chash d)))))
+                                                        #,(let ([derive (cdr (hash-ref chash d))])
+                                                            (if (syntax->datum derive)
+                                                                derive
+                                                                ctc)))))                                                        
                                                (hash-ref jhash d))))
                                       jarg))))))
   
@@ -142,10 +162,10 @@ suggested form for view/c
 
 (define-syntax (->j stx)
   (syntax-parse stx
-    [(_ ([X:id #:post constraint:expr #:with dctc:expr] ...) jargs:jarg ...)
-     (handle-jargs (syntax->list #'(X ...))
-                   (syntax->list #'(constraint ...))
-                   (syntax->list #'(dctc ...))
+    [(_ (jgroup:join-group ...) jargs:jarg ...)
+     (handle-jargs (syntax->list #'(jgroup.name ...))
+                   (syntax->list #'(jgroup.post ...))
+                   (syntax->list #'(jgroup.derive ...))
                    (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
                    (syntax->list #'(jargs.ctc ...)))]))
 
@@ -166,18 +186,14 @@ suggested form for view/c
 
 (module+ test
   (define example/c
-  (->j ([X #:post (λ (v) v) #:with (view/c +where)])
-       [(view/c +join +fetch) #:groups X]
-       [(view/c +join +fetch) #:groups X]
+  (->j ([X #:post (λ (v) (where v "a = b"))])
+       [(view/c +join +fetch +where) #:groups X]
+       [(view/c +join +fetch +where) #:groups X]
        any))
 
   (define/contract (f x y)
     example/c
     (fetch (join x y "")))
-
-  (define/contract x
-    (view/c +join)
-    (open-view "test.db" "test"))
   
   (f (open-view "test.db" "test") (open-view "test.db" "students")))
 

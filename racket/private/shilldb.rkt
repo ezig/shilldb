@@ -370,10 +370,17 @@
                                 val
                                 "two views appeared together in multiple groups with different modifiers"))
 
-           (define post-tf (record-arg/c-post-tf ctc))
-           (define derive/c (record-arg/c-derive/c ctc))
-           (add-to-store (store-entry val post-tf derive/c))
-           val)))))
+           (define arg-post-tf (record-arg/c-post-tf ctc))
+           (define arg-derive/c (record-arg/c-derive/c ctc))
+
+           (let ; If no post is given, use identity
+               ([post-tf (if arg-post-tf
+                              arg-post-tf
+                              values)]
+                ; Derive must be given
+                 [derive/c (λ (v1 v2 jcond) arg-derive/c)])
+             (add-to-store (store-entry val post-tf derive/c))
+             val))))))
 
   (struct apply-post/c (v1 v2 jcond)
     #:property prop:contract
@@ -414,14 +421,16 @@
                (define entry1 (get-store-entry v1))
                (define entry2 (get-store-entry v2))
 
-               (compose ((contract-projection (store-entry-derive entry2)) blame)
-                        ((contract-projection (store-entry-derive entry1)) blame)
+               (compose ((contract-projection
+                          ((store-entry-derive entry2) v1 v2 jcond)) blame)
+                        ((contract-projection
+                          ((store-entry-derive entry1) v1 v2 jcond)) blame)
                         (v v1 v2 jcond)))))
          
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
            ; No constraint on self, just use `values`
-           (add-to-store (store-entry val values any/c))
+           (add-to-store (store-entry val values (λ (v1 v2 jcond) any/c)))
            (impersonate-struct val                              
                                shill-view-join-constraint (λ (s v) (compose new-constraint v))
                                set-shill-view-join-constraint! mutator-redirect-proc
@@ -432,15 +441,14 @@
 
 (module+ test
   (define example/c
-    (let-values ([(XO X) (make-join-group)]
-                 [(YO Y) (make-join-group)])
-      (->
-       (and/c shill-view? XO (Y (λ (v) (where v "a < 10")) (view-proxy (list (list "fetch" #t) (list "where" #t)) #f)))
-       (and/c shill-view? YO (X (λ (v) (where v "a < 10")) (view-proxy (list (list "fetch" #t) (list "where" #t)) #f)))
-       any)))
+    (let-values ([(g1 g2) (make-join-group)] [(g3 g4) (make-join-group)])
+     (->
+      (and/c g1 (and/c (g4 (view-proxy (list (list "join" #t) (list "fetch" #t)) #t) #f)))
+      (and/c g3 (and/c (g2 (view-proxy (list (list "join" #t) (list "fetch" #t)) #t) #f)))
+      any)))
 
   (define/contract (f x y)
     example/c
-    (fetch (join x y "a = b")))
+    (fetch (join x y)))
 
   (f (open-view "test.db" "students") (open-view "test.db" "test")))
