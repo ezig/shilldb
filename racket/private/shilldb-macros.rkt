@@ -137,7 +137,11 @@ suggested form for view/c
     (pattern (name:keyword val:expr)))
   
   (define (validate-modifiers priv-name ks vs priv-stx)
-    (define valid-mods (hash-ref valid-modifiers priv-name))
+    (define valid-mods
+      (begin
+        (unless (hash-has-key? valid-modifiers priv-name)
+          (raise-syntax-error 'view/c (format "privilege ~a does not support modifiers" priv-name) priv-stx))
+        (hash-ref valid-modifiers priv-name)))
     (define (check-valid-names)
       (for-each (λ (k) (unless (assoc (syntax->datum k) valid-mods)
                          (raise-syntax-error 'view/c (format "invalid modifier for privilege ~a" priv-name) priv-stx k)))
@@ -215,8 +219,6 @@ suggested form for view/c
   (fetch (aggregate x "max(b)" #:groupby "a" #:having "max(b) < 50")))
       
   ;(f (open-view "test.db" "test") (open-view "test.db" "students")))
-
-(view/c [+aggregate #:with (view/c +fetch) #:having "max(b) > 10"])
 
 #|
 suggested form for join-constraint/c
