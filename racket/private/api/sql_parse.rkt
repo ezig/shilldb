@@ -7,7 +7,9 @@
          validate-select
          validate-aggr
          parse-groupby
-         parse-having)
+         parse-having
+         check-having
+         check-aggr)
 
 (require "util.rkt")
 (require parser-tools/yacc
@@ -218,3 +220,22 @@
 (define (validate-aggr str type-map)
   (-> string? hash? hash?)
   (select-to-type-map (parse-aggr str type-map)))
+
+(define (check-ast-aggrs t allowed-aggrs)
+  (define aggr-syms (map (compose string->symbol string-upcase)
+                          (split-and-trim allowed-aggrs ",")))
+  (define (aux t)
+    (match t
+      [(clause _ c1 c2) (and (aux c1) (aux c2))]
+      [(condexp _ e1 e2) (and (aux e1) (aux e2))]
+      [(exp _ _ e1 e2) (and (aux e1) (aux e2))]
+      [(aggop op _ _) (member op aggr-syms)]
+      [(atom _ _ _) #t]))
+  (aux (ast-root t)))
+
+(define (check-aggr aggr v allowed-aggrs)
+  (check-ast-aggrs (parse-aggr aggr (view-get-type-map v)) allowed-aggrs))
+
+(define (check-having having v allowed-aggrs)
+  (check-ast-aggrs (parse-having having (view-get-type-map v)) allowed-aggrs))
+

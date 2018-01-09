@@ -121,6 +121,9 @@
           s1)
       s2))
 
+(define (split-and-trim s join)
+  (map string-trim (string-split s join)))
+
 ; Printing utilities
 (define (print-fetch-res fr)
   (begin

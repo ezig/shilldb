@@ -116,7 +116,7 @@ suggested form for view/c
           "update" (list '(#:restrict 0))
           "insert" (list '(#:restrict 0))
           "delete" (list '(#:restrict 0))
-          "aggregate" (list '(#:having 0) '(#:with 1))))
+          "aggregate" (list '(#:having 0) '(#:aggrs 1) '(#:with 2))))
   
   (define-syntax-class privilege-name
     #:description "primitive privilege"
@@ -213,10 +213,10 @@ suggested form for view/c
        any))
 
   (define/contract x
-    (view/c [+aggregate #:with (view/c +fetch) ])
+    (view/c [+aggregate #:aggrs "MIN,max" #:having "max(b) > 10" #:with (view/c +fetch)])
     (open-view "test.db" "test"))
 
-  (fetch (aggregate x "max(b)" #:groupby "a" #:having "max(b) < 50")))
+  (fetch (aggregate x "MIN(b)" #:groupby "a" #:having "max(b) < 50")))
       
   ;(f (open-view "test.db" "test") (open-view "test.db" "students")))
 

@@ -3,7 +3,9 @@
 (require "api/db_api_impl.rkt"
          "shilldb-utils.rkt"
          (only-in "api/sql_parse.rkt"
-                  parse-where)
+                  parse-where
+                  check-having
+                  check-aggr)
          "api/util.rkt")
          
 (provide
@@ -171,6 +173,14 @@
                  (format "~a and ~a" old-having new-clause)
                  new-clause)
              old-having)))))
+  (define (aggr-aggrs/c v allowed)
+    (if allowed
+        (λ (a) (check-aggr a (shill-view-view v) allowed)) 
+        any/c))
+   (define (having-aggrs/c v allowed)
+     (if allowed
+         (λ (h) (check-having h (shill-view-view v) allowed))
+         any/c))
   (define dl (length details))
   (enhance-blame/c
    (cond [(= 2 dl)
@@ -181,9 +191,23 @@
                             (and (or/c boolean? string?) (having/c (third details))))
                #:pre (second details) (view-proxy full-details #f))]
          [(= 4 dl)
-          (->* (shill-view? string? (or/c boolean? string?)
-                            (and (or/c boolean? string?) (having/c (third details))))
-               #:pre (second details) (fourth details))])
+          (->i ([v shill-view?]
+                [aggr (v) (and/c string?  (aggr-aggrs/c v (fourth details)))]
+                [groupby (or/c boolean? string?)]
+                [having (v) (and/c (or/c boolean? string?)
+                                   (having/c (third details))
+                                   (having-aggrs/c v (fourth details)))])
+               #:pre () (second details)
+               [result (view-proxy full-details #f)])]
+         [(= 5 dl)
+          (->i ([v shill-view?]
+                [aggr (v) (and/c string?  (aggr-aggrs/c v (fourth details)))]
+                [groupby (or/c boolean? string?)]
+                [having (v) (and/c (or/c boolean? string?)
+                                   (having/c (third details))
+                                   (having-aggrs/c v (fourth details)))])
+               #:pre () (second details)
+               [result (fifth details)])])
   "aggregate"))
 
 (define (make-update/c view ctc details)
