@@ -11,6 +11,7 @@
 (provide
  view-proxy
  make-join-group
+ make-arg-box
  shill-view?
  view/c
  where
@@ -431,6 +432,15 @@
                                set-shill-view-join-derive! mutator-redirect-proc
                                impersonator-prop:contracted (and/c (value-contract val) ctc)))))))
   (values (constraint-args/c) record-arg/c))
+
+(define (make-arg-box)
+  (define store (box null))
+  (define (read)
+    (unbox store))
+  (define (write val)
+    (set-box! store val))
+
+  (values read write))
 
 (module+ test
   (define example/c

@@ -5,9 +5,12 @@
 
 (provide view/c
          ->j
+         ->i/join
          constraint/c)
 
 (require (for-syntax syntax/parse
+                     (only-in racket/splicing
+                              splicing-let-values)
                      (only-in racket/syntax
                               format-id
                               generate-temporary)
@@ -19,7 +22,9 @@
                               flatten
                               last)
                      (only-in "api/util.rkt" zip))
-         (except-in "shilldb.rkt" view/c))
+         (except-in "shilldb.rkt" view/c)
+         (only-in racket/splicing
+         splicing-let-values))
 
 #|
 
@@ -110,6 +115,64 @@ suggested form for view/c
           #,(flatten-once
              (syntax->datum
               #`(-> #,(map (curry make-arg-contract jhash chash) jargs ctcs constraint-ids)))))))
+
+  (define-syntax-class dep-join-group
+    #:description "dependent join group"
+    #:attributes (name [depends 1] post derive)
+    (pattern group:join-group
+             #:with (depends ...) '()
+             #:with name #'group.name
+             #:with post #'group.post
+             #:with derive #'group.derive)
+    (pattern [name:id (depends:id ...) #:post post:expr #:with derive:expr])
+    (pattern [name:id (depends:id ...) #:with derive:expr #:post post:expr])
+    (pattern [name:id (depends:id ...) #:post post:expr]
+             #:with derive #f)
+    (pattern [name:id (depends:id ...) #:with derive:expr]
+             #:with post #f))
+
+  (define-syntax-class dep-jarg
+    #:description "dependent join arg"
+    (pattern [name:id ctc:expr]))
+
+  (struct dep-join-group-s (name depends post derive) #:transparent)
+  (struct dep-jarg-s (name ctc) #:transparent)
+
+  (define (dep-args-to-struct name ctc)
+    (map (curry dep-jarg-s) name ctc))
+  
+  (define (dep-jgroups-to-struct name depends post derive)
+    (map (curry dep-join-group-s)
+         name
+         (map syntax->list depends)
+         post
+         derive))
+         
+  (define (handle-dep-jargs jgroups dep-args jargs)
+    (define (make-box-ids)
+      (let ([idhash (make-hash)])
+        (begin
+          (for-each (λ (arg) (hash-set! idhash
+                                        (syntax->datum (dep-jarg-s-name arg))
+                                        (list (generate-temporary) (generate-temporary))))
+                    dep-args)
+          idhash)))
+    (define idhash (make-box-ids))
+    #`(let-values #,(map (λ (arg) #`[(#,(format-id #`jargs "~a" (car (hash-ref idhash (syntax->datum (dep-jarg-s-name arg)))))
+                                      #,(format-id #`jargs "~a" (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg))))))
+                                     (make-arg-box)]) dep-args)
+          (->j #,(map (λ (jgroup) #`[#,(dep-join-group-s-name jgroup)
+                                 #:post (λ (v) (let #,(map (λ (dep) #`[#,dep #,(format-id #`jargs "~a"
+                                                                                          (car (hash-ref idhash (syntax->datum dep))))])
+                                                       (dep-join-group-s-depends jgroup))
+                                          (#,(dep-join-group-s-post jgroup) v)))
+                                 #:with #,(dep-join-group-s-derive jgroup)]) jgroups)
+               #,(flatten-once
+                  (list (map syntax->datum
+                             (map (λ (arg) #`(and/c #,(dep-jarg-s-ctc arg) #,(format-id #`jargs "~a"
+                                                                                        (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg)))))))
+                                  dep-args))
+                        (flatten-once (syntax->list jargs)))))))
   
   (define valid-modifiers
     (hash "fetch" (list '(#:restrict 0))
@@ -183,12 +246,27 @@ suggested form for view/c
 
 (define-syntax (->j stx)
   (syntax-parse stx
-    [(_ (jgroup:join-group ...) jargs:jarg ...)
-     (handle-jargs (syntax->list #'(jgroup.name ...))
-                   (syntax->list #'(jgroup.post ...))
-                   (syntax->list #'(jgroup.derive ...))
-                   (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
-                   (syntax->list #'(jargs.ctc ...)))]))
+    [(_ (jgroup:join-group ...) (jargs:jarg ...))
+     (datum->syntax #'stx
+      (syntax->datum
+       (handle-jargs (syntax->list #'(jgroup.name ...))
+                     (syntax->list #'(jgroup.post ...))
+                     (syntax->list #'(jgroup.derive ...))
+                     (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
+                     (syntax->list #'(jargs.ctc ...)))))]))
+
+(define-syntax (->i/join stx)
+  (syntax-parse stx
+    [(_ (jgroup:dep-join-group ...) (dep-args:dep-jarg ...) jargs:jarg ...)
+     (let ([jgroup-s (dep-jgroups-to-struct
+                      (syntax->list #'(jgroup.name ...))
+                      (syntax->list #'((jgroup.depends ...) ...))
+                      (syntax->list #'(jgroup.post ...))
+                      (syntax->list #'(jgroup.derive ...)))]
+           [dep-args-s (dep-args-to-struct
+                        (syntax->list #'(dep-args.name ...))
+                        (syntax->list #'(dep-args.ctc ...)))])
+       (handle-dep-jargs jgroup-s dep-args-s #'(jargs ...)))]))
 
 (define-syntax (privilege-parse stx)
   (syntax-parse stx
@@ -219,6 +297,13 @@ suggested form for view/c
   (fetch (aggregate x "MIN(b)" #:groupby "a" #:having "max(b) < 50")))
       
   ;(f (open-view "test.db" "test") (open-view "test.db" "students")))
+
+(->i/join ([X (u) #:post (λ (v) (where v u))])
+          ([u string?])
+          [(view/c +join +fetch +where) #:groups X]
+          [(view/c +join +fetch +where) #:groups X]
+          any)
+          
 
 #|
 suggested form for join-constraint/c
