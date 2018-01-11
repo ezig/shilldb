@@ -114,7 +114,10 @@ suggested form for view/c
                                                  (if (member c constraint-ids)
                                                      #`any/c
                                                 #`(#,c
-                                                   #,(car (hash-ref chash d))
+                                                   #,(let ([post (car (hash-ref chash d))])
+                                                       (if (syntax->datum post)
+                                                           post
+                                                           #`#f))
                                                    #,(let ([derive (cdr (hash-ref chash d))])
                                                        (if (syntax->datum derive)
                                                            derive
