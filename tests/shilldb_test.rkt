@@ -23,8 +23,30 @@
    (testfun v1 v2)
    (cleanup-db)))
 
+(define (fetch-rows v)
+  (cdr (fetch v)))
+
+(define (check-rows v expected)
+  (check-equal? (fetch-rows v) expected))
+
 (define-test-suite
   shill-db-tests
+  (test-suite
+   "Join post tests"
+   (test-pass
+    "Join group post applies function"
+    (join-test-exec
+     (λ (v1 v2)
+       (define/contract (f x y)
+         (->j ([X #:post (λ (v) (select v "id"))])
+              [(view/c +join +select +fetch) #:groups X]
+              [(view/c +join +select +fetch) #:groups X]
+              any)
+         (join x y))
+       (begin
+         (insert v1 "id, name" (list 1 "Ezra"))
+         (insert v2 "userid" (list 1))
+         (check-rows (f v1 v2) '((1))))))))
   (test-suite
    "Join derive tests"
    (test-pass
