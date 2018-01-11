@@ -64,6 +64,20 @@ suggested form for view/c
   (define (flatten-once lst)
     (apply append (map (lambda (e) (if (cons? e) e (list e))) lst)))
 
+  (define (flatten-stx-once stx)
+    (flatten-once (map (lambda (s) (let ([l (syntax->list s)])
+                                     (if l
+                                         l
+                                         s))) stx)))
+
+  (define (flatten-stx-n n stx)
+    (define (aux stx m)
+      (if (= m 0)
+          stx
+          (aux (flatten-stx-once stx) (- m 1))))
+    (aux (syntax->list stx) n))
+
+
   ; XXX: Check for syntax errors
   (define (handle-jargs ids constraints dctcs jargs ctcs)
     (define (make-constraint-ids)
@@ -93,28 +107,26 @@ suggested form for view/c
           #`#,ctc
           #`(and/c #,ctc
                    #,(car constraint-ids)
-                   #,((compose remove-duplicates flatten-once flatten-once syntax->datum)
+                   #,(flatten-stx-n 2
                       #`(and/c #,(map (λ (group)
                                         (let ([d (syntax->datum group)])
                                           (map (λ (c)
                                                  (if (member c constraint-ids)
                                                      #`any/c
-                                                     #`(#,c
-                                                        #,(car (hash-ref chash d))
-                                                        #,(let ([derive (cdr (hash-ref chash d))])
-                                                            (if (syntax->datum derive)
-                                                                derive
-                                                                ctc)))))                                                        
-                                               (hash-ref jhash d))))
+                                                #`(#,c
+                                                   #,(car (hash-ref chash d))
+                                                   #,(let ([derive (cdr (hash-ref chash d))])
+                                                       (if (syntax->datum derive)
+                                                           derive
+                                                           ctc)))))
+                                          (hash-ref jhash d))))
                                       jarg))))))
   
     (let*-values ([(constraint-ids) (make-constraint-ids)]
                   [(jhash chash) (make-constraint-hash constraint-ids)])
       #`(let-values #,(map (λ (p) #`[#,(map (λ (i) (format-id #f "~a" i)) p) (make-join-group)])
                            (filter (compose not empty?) constraint-ids))
-          #,(flatten-once
-             (syntax->datum
-              #`(-> #,(map (curry make-arg-contract jhash chash) jargs ctcs constraint-ids)))))))
+              #,(flatten-stx-n 1 #`(-> #,(map (curry make-arg-contract jhash chash) jargs ctcs constraint-ids))))))
 
   (define-syntax-class dep-join-group
     #:description "dependent join group"
@@ -162,8 +174,8 @@ suggested form for view/c
                                       #,(format-id #`jargs "~a" (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg))))))
                                      (make-arg-box)]) dep-args)
           (->j #,(map (λ (jgroup) #`[#,(dep-join-group-s-name jgroup)
-                                 #:post (λ (v) (let #,(map (λ (dep) #`[#,dep #,(format-id #`jargs "~a"
-                                                                                          (car (hash-ref idhash (syntax->datum dep))))])
+                                 #:post (λ (v) (let #,(map (λ (dep) #`[#,dep (#,(format-id #`jargs "~a"
+                                                                                          (car (hash-ref idhash (syntax->datum dep)))))])
                                                        (dep-join-group-s-depends jgroup))
                                           (#,(dep-join-group-s-post jgroup) v)))
                                  #:with #,(dep-join-group-s-derive jgroup)]) jgroups)
@@ -247,13 +259,11 @@ suggested form for view/c
 (define-syntax (->j stx)
   (syntax-parse stx
     [(_ (jgroup:join-group ...) (jargs:jarg ...))
-     (datum->syntax #'stx
-      (syntax->datum
        (handle-jargs (syntax->list #'(jgroup.name ...))
                      (syntax->list #'(jgroup.post ...))
                      (syntax->list #'(jgroup.derive ...))
                      (map syntax->list (syntax->list #`((jargs.groups ...) ...)))
-                     (syntax->list #'(jargs.ctc ...)))))]))
+                     (syntax->list #'(jargs.ctc ...)))]))
 
 (define-syntax (->i/join stx)
   (syntax-parse stx
@@ -285,26 +295,23 @@ suggested form for view/c
 
 (module+ test
   (define example/c
-  (->j ([X #:post (λ (v) (where v "a = b"))])
-       [(view/c +join +fetch +where) #:groups X]
-       [(view/c +join +fetch +where) #:groups X]
-       any))
-
-  (define/contract x
-    (view/c [+aggregate #:aggrs "MIN,max" #:having "max(b) > 10" #:with (view/c +fetch)])
-    (open-view "test.db" "test"))
-
-  (fetch (aggregate x "MIN(b)" #:groupby "a" #:having "max(b) < 50")))
+    (->i/join ([X (u) #:post (λ (v) (where v (format "a = ~a" u)))])
+              ([u integer?])
+              [(view/c +join +fetch +where) #:groups X]
+              [(view/c +join +fetch +where) #:groups X]
+              any))
+  (define/contract (f u x y)
+    example/c
+    (fetch (join x y)))
       
-  ;(f (open-view "test.db" "test") (open-view "test.db" "students")))
+  (f 5 (open-view "test.db" "test") (open-view "test.db" "students")))
 
-(->i/join ([X (u) #:post (λ (v) (where v u))])
-          ([u string?])
-          [(view/c +join +fetch +where) #:groups X]
-          [(view/c +join +fetch +where) #:groups X]
-          any)
+(->i/join ([X (u) #:post (λ (v) (where v (format "a = ~a" u)))])
+              ([u integer?])
+              [(view/c +join +fetch +where) #:groups X]
+              [(view/c +join +fetch +where) #:groups X]
+              any)
           
-
 #|
 suggested form for join-constraint/c
 
