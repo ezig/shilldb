@@ -170,21 +170,21 @@ suggested form for view/c
                     dep-args)
           idhash)))
     (define idhash (make-box-ids))
-    #`(let-values #,(map (λ (arg) #`[(#,(format-id #`jargs "~a" (car (hash-ref idhash (syntax->datum (dep-jarg-s-name arg)))))
-                                      #,(format-id #`jargs "~a" (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg))))))
+    #`(let-values #,(map (λ (arg) #`[(#,(format-id #f "~a" (car (hash-ref idhash (syntax->datum (dep-jarg-s-name arg)))))
+                                      #,(format-id #f "~a" (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg))))))
                                      (make-arg-box)]) dep-args)
-          (->j #,(map (λ (jgroup) #`[#,(dep-join-group-s-name jgroup)
-                                 #:post (λ (v) (let #,(map (λ (dep) #`[#,dep (#,(format-id #`jargs "~a"
-                                                                                          (car (hash-ref idhash (syntax->datum dep)))))])
-                                                       (dep-join-group-s-depends jgroup))
-                                          (#,(dep-join-group-s-post jgroup) v)))
-                                 #:with #,(dep-join-group-s-derive jgroup)]) jgroups)
-               #,(flatten-once
-                  (list (map syntax->datum
-                             (map (λ (arg) #`(and/c #,(dep-jarg-s-ctc arg) #,(format-id #`jargs "~a"
-                                                                                        (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg)))))))
-                                  dep-args))
-                        (flatten-once (syntax->list jargs)))))))
+          #,(flatten-stx-n 1
+                           #`(->j (#,(map (λ (jgroup) #`[#,(dep-join-group-s-name jgroup)
+                                                         #:post (λ (v) (let #,(map (λ (dep) #`[#,dep (#,(format-id #`jargs "~a"
+                                                                                                                   (car (hash-ref idhash (syntax->datum dep)))))])
+                                                                                   (dep-join-group-s-depends jgroup))
+                                                                         (#,(dep-join-group-s-post jgroup) v)))
+                                                         #:with #,(dep-join-group-s-derive jgroup)]) jgroups))
+
+                                  #,(map (λ (arg) #`(and/c #,(dep-jarg-s-ctc arg) #,(format-id #`jargs "~a"
+                                                                                               (cadr (hash-ref idhash (syntax->datum (dep-jarg-s-name arg)))))))
+                                         dep-args)
+                                  #,jargs))))
   
   (define valid-modifiers
     (hash "fetch" (list '(#:restrict 0))
@@ -258,7 +258,7 @@ suggested form for view/c
 
 (define-syntax (->j stx)
   (syntax-parse stx
-    [(_ (jgroup:join-group ...) (jargs:jarg ...))
+    [(_ (jgroup:join-group ...) jargs:jarg ...)
        (handle-jargs (syntax->list #'(jgroup.name ...))
                      (syntax->list #'(jgroup.post ...))
                      (syntax->list #'(jgroup.derive ...))
@@ -306,12 +306,6 @@ suggested form for view/c
       
   (f 5 (open-view "test.db" "test") (open-view "test.db" "students")))
 
-(->i/join ([X (u) #:post (λ (v) (where v (format "a = ~a" u)))])
-              ([u integer?])
-              [(view/c +join +fetch +where) #:groups X]
-              [(view/c +join +fetch +where) #:groups X]
-              any)
-          
 #|
 suggested form for join-constraint/c
 
