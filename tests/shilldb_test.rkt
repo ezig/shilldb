@@ -32,7 +32,7 @@
       (join-test-exec
        (λ (v1 v2)
          (define/contract (f x y)
-           (->j ([X #:post values #:with (view/c +where)])
+           (->j ([X #:with (view/c +where)])
                 [(view/c +join) #:groups X]
                 [(view/c +join) #:groups X]
                 any)
@@ -43,7 +43,7 @@
      (join-test-exec
       (λ (v1 v2)
         (define/contract (f x y)
-          (->j ([X #:post values #:with (view/c)])
+          (->j ([X #:with (view/c)])
                [(view/c +join +where) #:groups X]
                [(view/c +join) #:groups X]
                any)
@@ -55,7 +55,7 @@
      (join-test-exec
       (λ (v1 v2)
         (define/contract (f x y)
-          (->j ([X #:post values #:with (view/c +where)])
+          (->j ([X #:with (view/c +where)])
                [(view/c +join) #:groups X]
                [(view/c +join) #:groups X]
                any)
@@ -67,7 +67,7 @@
    (join-test-exec
     (λ (v1 v2)
       (define/contract (f x y)
-        (->j ([X #:post values #:with (view/c)])
+        (->j ([X #:with (view/c)])
              [(view/c +join) #:groups X]
              [(view/c +join) #:groups X]
              any)
@@ -80,7 +80,7 @@
    (join-test-exec
     (λ (v1 v2)
       (define/contract (f x y)
-        (->j ([X #:post values #:with (view/c +where)])
+        (->j ([X #:with (view/c +where)])
                 [(view/c +join) #:groups X]
                 [(view/c +join) #:groups X]
                 any)
