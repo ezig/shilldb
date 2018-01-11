@@ -26,42 +26,42 @@
 (define-test-suite
   shill-db-tests
   (test-suite
-    "Join derive test"
-    (test-pass
-      "Join group derive works for single layer case: derive a new privilege"
-      (join-test-exec
-       (λ (v1 v2)
-         (define/contract (f x y)
-           (->j ([X #:with (view/c +where)])
-                [(view/c +join) #:groups X]
-                [(view/c +join) #:groups X]
-                any)
-           (where (join x y) "id < 10"))
-         (f v1 v2))))
-    (test-contract-fail
-     "Join group derive works for single layer case: lose a privilege"
-     (join-test-exec
-      (λ (v1 v2)
-        (define/contract (f x y)
-          (->j ([X #:with (view/c)])
-               [(view/c +join +where) #:groups X]
-               [(view/c +join) #:groups X]
-               any)
-          (where (join x y) "id < 10"))
-        (f v1 v2)))
-     "(function f)"))
+   "Join derive tests"
+   (test-pass
+    "Join group derive works for single layer case: derive a new privilege"
+    (join-test-exec
+     (λ (v1 v2)
+       (define/contract (f x y)
+         (->j ([X #:with (view/c +where)])
+              [(view/c +join) #:groups X]
+              [(view/c +join) #:groups X]
+              any)
+         (where (join x y) "id < 10"))
+       (f v1 v2))))
+   (test-contract-fail
+    "Join group derive works for single layer case: lose a privilege"
+    (join-test-exec
+     (λ (v1 v2)
+       (define/contract (f x y)
+         (->j ([X #:with (view/c)])
+              [(view/c +join +where) #:groups X]
+              [(view/c +join) #:groups X]
+              any)
+         (where (join x y) "id < 10"))
+       (f v1 v2)))
+    "(function f)"))
   (test-pass
-     "Join group derive works for nested case: both layers allow"
-     (join-test-exec
-      (λ (v1 v2)
-        (define/contract (f x y)
-          (->j ([X #:with (view/c +where)])
-               [(view/c +join) #:groups X]
-               [(view/c +join) #:groups X]
-               any)
-          (where (join x y) "id < 10"))
-        (define/contract v1/c (view/c +join +where) v1)
-        (f v1/c v2))))
+   "Join group derive works for nested case: both layers allow"
+   (join-test-exec
+    (λ (v1 v2)
+      (define/contract (f x y)
+        (->j ([X #:with (view/c +where)])
+             [(view/c +join) #:groups X]
+             [(view/c +join) #:groups X]
+             any)
+        (where (join x y) "id < 10"))
+      (define/contract v1/c (view/c +join +where) v1)
+      (f v1/c v2))))
   (test-contract-fail
    "Join group derive works for nested case: ->j layer allows"
    (join-test-exec
@@ -81,9 +81,9 @@
     (λ (v1 v2)
       (define/contract (f x y)
         (->j ([X #:with (view/c +where)])
-                [(view/c +join) #:groups X]
-                [(view/c +join) #:groups X]
-                any)
+             [(view/c +join) #:groups X]
+             [(view/c +join) #:groups X]
+             any)
         (where (join x y) "id < 10"))
       (define/contract v1/c (view/c +join) v1)
       (f v1/c v2)))
