@@ -1,4 +1,4 @@
 #lang s-exp syntax/module-reader
-"main.rkt"
+shilldb/cap/lang/main
 
 

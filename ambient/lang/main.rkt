@@ -1,6 +1,6 @@
 #lang racket
 
-(require (only-in "../private/shilldb.rkt"
+(require (only-in "../../racket/private/shilldb.rkt"
                   open-view))
 
 (provide #%app

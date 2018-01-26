@@ -4,9 +4,9 @@
   db
   rackunit
   rackunit/text-ui
-  "../racket/private/shilldb-macros.rkt"
+  "../private/shilldb-macros.rkt"
   "test-utils.rkt"
-  (except-in "../racket/private/shilldb.rkt"
+  (except-in "../private/shilldb.rkt"
              view/c))
 
 ; https://stackoverflow.com/questions/16842811/racket-how-to-retrieve-the-path-of-the-running-file
@@ -109,6 +109,6 @@
         (where (join x y) "id < 10"))
       (define/contract v1/c (view/c +join) v1)
       (f v1/c v2)))
-   (this-file)))
+  "<pkgs>/db_api/tests/shilldb_test.rkt"))
 
 (run-tests shill-db-tests)

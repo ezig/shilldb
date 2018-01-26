@@ -4,7 +4,7 @@
          rackunit
          rackunit/text-ui
          "test-utils.rkt"
-         (only-in "../racket/private/api/db_api_impl.rkt"
+         (only-in "../private/api/db_api_impl.rkt"
                   [where-impl where]
                   [update-impl update]
                   [insert-impl insert]
