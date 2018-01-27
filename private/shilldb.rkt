@@ -13,7 +13,6 @@
  make-join-group
  make-arg-box
  shill-view?
- view/c
  where
  join
  select

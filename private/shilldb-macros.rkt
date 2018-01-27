@@ -22,7 +22,7 @@
                               flatten
                               last)
                      (only-in "api/util.rkt" zip))
-         (except-in "shilldb.rkt" view/c)
+         "shilldb.rkt"
          (only-in racket/splicing
          splicing-let-values))
 
