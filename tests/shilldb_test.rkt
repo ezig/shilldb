@@ -4,10 +4,8 @@
   db
   rackunit
   rackunit/text-ui
-  "../private/shilldb-macros.rkt"
   "test-utils.rkt"
-  (except-in "../private/shilldb.rkt"
-             view/c))
+  shilldb/private/out)
 
 ; https://stackoverflow.com/questions/16842811/racket-how-to-retrieve-the-path-of-the-running-file
 (define-syntax-rule (this-file)
@@ -38,10 +36,10 @@
     (join-test-exec
      (λ (v1 v2)
        (define/contract (f x y)
-         (->j ([X #:post (λ (v) (select v "id"))])
-              [(view/c +join +select +fetch) #:groups X]
-              [(view/c +join +select +fetch) #:groups X]
-              any)
+         (->/join ([X #:post (λ (v) (select v "id"))])
+                  [(view/c +join +select +fetch) #:groups X]
+                  [(view/c +join +select +fetch) #:groups X]
+                  any)
          (join x y))
        (begin
          (insert v1 "id, name" (list 1 "Ezra"))
@@ -54,10 +52,10 @@
     (join-test-exec
      (λ (v1 v2)
        (define/contract (f x y)
-         (->j ([X #:with (view/c +where)])
-              [(view/c +join) #:groups X]
-              [(view/c +join) #:groups X]
-              any)
+         (->/join ([X #:with (view/c +where)])
+                  [(view/c +join) #:groups X]
+                  [(view/c +join) #:groups X]
+                  any)
          (where (join x y) "id < 10"))
        (f v1 v2))))
    (test-contract-fail
@@ -65,10 +63,10 @@
     (join-test-exec
      (λ (v1 v2)
        (define/contract (f x y)
-         (->j ([X #:with (view/c)])
-              [(view/c +join +where) #:groups X]
-              [(view/c +join) #:groups X]
-              any)
+         (->/join ([X #:with (view/c)])
+                  [(view/c +join +where) #:groups X]
+                  [(view/c +join) #:groups X]
+                  any)
          (where (join x y) "id < 10"))
        (f v1 v2)))
     "(function f)"))
@@ -77,10 +75,10 @@
    (join-test-exec
     (λ (v1 v2)
       (define/contract (f x y)
-        (->j ([X #:with (view/c +where)])
-             [(view/c +join) #:groups X]
-             [(view/c +join) #:groups X]
-             any)
+        (->/join ([X #:with (view/c +where)])
+                 [(view/c +join) #:groups X]
+                 [(view/c +join) #:groups X]
+                 any)
         (where (join x y) "id < 10"))
       (define/contract v1/c (view/c +join +where) v1)
       (f v1/c v2))))
@@ -89,10 +87,10 @@
    (join-test-exec
     (λ (v1 v2)
       (define/contract (f x y)
-        (->j ([X #:with (view/c)])
-             [(view/c +join) #:groups X]
-             [(view/c +join) #:groups X]
-             any)
+        (->/join ([X #:with (view/c)])
+                 [(view/c +join) #:groups X]
+                 [(view/c +join) #:groups X]
+                 any)
         (where (join x y) "id < 10"))
       (define/contract v1/c (view/c +join +where) v1)
       (f v1/c v2)))
@@ -102,13 +100,13 @@
    (join-test-exec
     (λ (v1 v2)
       (define/contract (f x y)
-        (->j ([X #:with (view/c +where)])
-             [(view/c +join) #:groups X]
-             [(view/c +join) #:groups X]
-             any)
+        (->/join ([X #:with (view/c +where)])
+                 [(view/c +join) #:groups X]
+                 [(view/c +join) #:groups X]
+                 any)
         (where (join x y) "id < 10"))
       (define/contract v1/c (view/c +join) v1)
       (f v1/c v2)))
-  "<pkgs>/db_api/tests/shilldb_test.rkt"))
+   "<pkgs>/db_api/tests/shilldb_test.rkt"))
 
 (run-tests shill-db-tests)
