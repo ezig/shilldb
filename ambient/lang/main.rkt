@@ -6,6 +6,7 @@
          #%module-begin
          #%datum
          #%top-interaction
+         #%top
          lambda
          λ
          let
