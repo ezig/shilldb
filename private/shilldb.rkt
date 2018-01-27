@@ -398,6 +398,10 @@
   (struct constraint-args/c ()
     #:property prop:contract
     (build-contract-property
+     #:first-order
+     (λ (ctc)
+       (λ (val)
+         (shill-view? val)))
      #:projection
      (λ (ctc)
        (λ (blame)
@@ -422,6 +426,9 @@
          
          (define (redirect proc) (λ (s v) proc))
          (λ (val)
+           (unless (contract-first-order-passes? ctc val)
+             (raise-blame-error blame val '(expected "a view" given "~e") val))
+           
            ; No constraint on self, just use `values`
            (add-to-store (store-entry val values (λ (v1 v2 jcond) any/c)))
            (impersonate-struct val                              
