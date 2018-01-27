@@ -1,14 +1,25 @@
 #lang racket
 
-(require (only-in "../../racket/private/shilldb.rkt"
-                  open-view))
+(require shilldb/private/out)
 
 (provide #%app
          #%module-begin
          #%datum
          #%top-interaction
-         define
+         lambda
+         λ
+         let
+         rename-in
          open-view
-         require
-         only-in)
+         #%top
+         define
+         define-values
+         list
+         empty
+         view?
+         where
+         join
+         select
+         (rename-out [shilldb-require require]))
+         
          
