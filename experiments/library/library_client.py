@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     random.seed(42)
 
-    for i in range(1, 25):    
+    for i in range(1, 500):
         reserve_new_book()
         reserve_new_book()
         reserve_new_book()
