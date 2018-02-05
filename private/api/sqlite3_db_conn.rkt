@@ -64,7 +64,7 @@
 
    (define (parse-type dbconn type-string)
      (let ([type-lower (string-downcase type-string)])
-        (if (or (string=? type-lower "text") (string-contains? type-lower "char"))
+        (if (or (string=? type-lower "text") (string=? type-lower "string") (string-contains? type-lower "char"))
             'str
             'num)))
    ])
