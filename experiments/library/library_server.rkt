@@ -1,5 +1,11 @@
 #lang racket
 
+(provide execute-reserve
+         execute-my-reservations
+         execute-remove-reservation
+         execute-num-reservations
+         execute-search-author)
+
 (require (planet dmac/spin))
 (require db)
 (require json)
@@ -7,7 +13,7 @@
 (require (for-syntax racket/syntax))
 
 (define DBPATH "/Users/ezra/Dropbox/Shill/db_api/experiments/library/test.db")
-(define DBIMPL 'db)
+(define DBIMPL 'sdb-ctc)
 
 (define-syntax (with-db stx)
   (syntax-case stx ()
@@ -30,6 +36,10 @@
 (define (sdb-to-json data)
   (with-output-to-string
       (λ () (write-json (cdr data)))))
+
+(define (sdb-row-to-json data)
+  (with-output-to-string
+      (λ () (write-json (first (cdr data))))))
 
 (define/contract (reserve/ctc user book v)
   (->i ([user string?]
@@ -129,14 +139,14 @@
 
 (define/contract (num-reservations/ctc book v)
   (string? (sdb:view/c [+aggregate #:with (sdb:view/c +fetch)] +where) . -> . string?)
-  (sdb-to-json (sdb:fetch (sdb:aggregate (sdb:where v (format "book = ~a" book)) "count(r_id)"))))
+  (sdb-row-to-json (sdb:fetch (sdb:aggregate (sdb:where v (format "book = ~a" book)) "count(r_id)"))))
 
 (define (execute-num-reservations book)
   (case DBIMPL
     ['db (with-db
              (row-to-json (query-row db "select count(*) from reservations where book = $1" book)))]
     ['sdb (let ([v (sdb:open-view DBPATH "reservations")])
-            (sdb-to-json (sdb:fetch (sdb:aggregate (sdb:where v (format "book = ~a" book)) "count(r_id)"))))]
+            (sdb-row-to-json (sdb:fetch (sdb:aggregate (sdb:where v (format "book = ~a" book)) "count(r_id)"))))]
     ['sdb-ctc (let ([v (sdb:open-view DBPATH "reservations")])
                 (num-reservations/ctc book v))]))
 

@@ -17,6 +17,8 @@ def delete_one_reservation():
         requests.get(server + "remove_reservation", {"user": user, "rid": rid})
 
 def reserve_new_book():
+    global authors 
+
     author = random.choice(authors)
     fname = author[0]
     lname = author[1]
@@ -28,15 +30,21 @@ def reserve_new_book():
     if num_reservations[0] < 2:
         requests.get(server + "reserve", {"user": user, "book": book_id})
 
-if __name__ == '__main__':
+def run_tests(n):
+    global authors
+
     with open(authors_file) as csvData:
         csvReader = csv.reader(csvData)
         authors = list(csvReader)
 
     random.seed(42)
 
-    for i in range(1, 500):
+    for i in range(1, n):
         reserve_new_book()
         reserve_new_book()
         reserve_new_book()
         delete_one_reservation()
+
+if __name__ == '__main__':
+    run_tests(250)
+
