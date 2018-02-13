@@ -5,7 +5,7 @@ import shutil
 from pprint import pprint
 import pandas as pd
 
-NTRIALS = 2
+NTRIALS = 100
 MIN_SELECT = 0
 MAX_SELECT = 100
 INCR = 10
@@ -65,7 +65,7 @@ def main(arg):
                 db, sdb = run_one_test(arg, s)
 
                 db_total[s].append(db)
-                sdb_total[s].append(db)
+                sdb_total[s].append(sdb)
 
     end = time.time()
     total_time = end - start
