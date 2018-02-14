@@ -65,4 +65,4 @@
    (execute-query querytype use-sdb? selectivity)))
 
 (random-seed 42)
-;(main)
+(main)
