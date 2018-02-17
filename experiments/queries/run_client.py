@@ -21,25 +21,19 @@ def run_one_test(qtype, selectivity):
 
     db_setup()
 
-    db_start = time.time()
     p = open_db()
-    _ = p.read()
+    db_time = float(p.read()) / 1000.0
     _ = p.close()
-    db_end = time.time()
-    db_total = db_end - db_start
 
     db_setup()
 
-    shilldb_start = time.time()
     p = open_shilldb()
-    _ = p.read()
+    shilldb_time = float(p.read()) / 1000.0
     _ = p.close()
-    shilldb_end = time.time()
-    shilldb_total = shilldb_end - shilldb_start
 
-    return db_total, shilldb_total
+    return db_time, shilldb_time
 
-def main(arg):
+def main(arg, f_suffix):
     db_total = None
     sdb_total = None
 
@@ -73,8 +67,8 @@ def main(arg):
     print "Trials: " + str(NTRIALS) + "\n"
     print "Total time: " + str(total_time) + "\n"
 
-    pd.DataFrame.from_dict(db_total).to_csv("db.csv")
-    pd.DataFrame.from_dict(sdb_total).to_csv("shilldb.csv")
+    pd.DataFrame.from_dict(db_total).to_csv("db_" + f_suffix + ".csv")
+    pd.DataFrame.from_dict(sdb_total).to_csv("shilldb_" + f_suffix + ".csv")
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    main(sys.argv[1], f_suffix)

@@ -13,7 +13,7 @@ insert_query = "INSERT INTO test (id, value) VALUES (?, ?)"
 
 DB.transaction
 
-for i in 1..1000000 do
+for i in 1..20000 do
     DB.execute(insert_query, i, r.rand(100))
 end
 

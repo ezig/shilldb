@@ -17,12 +17,21 @@
 (define-syntax (with-db stx)
   (syntax-case stx ()
     [(_ exp)
-        (with-syntax ([db (format-id stx "~a" #'db)])
-          #'(let ([db (sqlite3-connect #:database DBPATH)])
-              (begin
-                (let ([ret exp])
-                  (disconnect db)
-                  ret))))]))
+     (with-syntax ([db (format-id stx "~a" #'db)])
+       #'(let ([db (sqlite3-connect #:database DBPATH)])
+           (begin
+             (let ([ret exp])
+               (disconnect db)
+               ret))))]))
+
+(define-syntax (time stx)
+  (syntax-case stx ()
+    [(_ exp)
+     #'(let ([start (current-milliseconds)])
+         (begin
+           (let ([res exp]
+                 [end (current-milliseconds)])
+             (- end start))))]))
 
 (define (execute-where use-sdb? select)
   (let-values ([(low high) (random-range select)])
@@ -62,7 +71,7 @@
    (define use-sdb? (= (string->number use-sdb) 1))
    (define selectivity (string->number selectivityarg))
    (define querytype (string->symbol querytypearg))
-   (execute-query querytype use-sdb? selectivity)))
+   (println (time (execute-query querytype use-sdb? selectivity)))))
 
 (random-seed 42)
 (main)
