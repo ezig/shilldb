@@ -42,7 +42,7 @@
       void)))
 
 (define (execute-update use-sdb? select)
-  (execute-update #t 10)(let-values ([(low high) (random-range select)])
+  (let-values ([(low high) (random-range select)])
     (begin
       (if use-sdb?
           (update
@@ -53,10 +53,26 @@
       void)))
 
 (define (execute-insert use-sdb?)
-  2)
+  (let-values ([(low high) (random-range 20)]
+               [(ntimes) 10])
+  (begin
+    (repeater
+    (lambda () (if use-sdb?
+        (insert
+          (where (open-view DBPATH "test") (format "value >= ~a and value <= ~a" low (+ high 10)))
+          "id, value"
+          (list high (+ high 5)))
+        (with-db (query-exec db "insert into test (id, value) values ($1, $2)" high (+ high 5)))))
+    ntimes)
+    void)))
 
 (define (execute-delete use-sdb? select)
-  2)
+  (let-values ([(low high) (random-range select)])
+    (begin
+      (if use-sdb?
+          (delete (where (open-view DBPATH "test") (format "value >= ~a and value <= ~a" low high)))
+          (with-db (query-exec db "delete from test where value >= $1 and value <= $2" low high)))
+      void)))
 
 (define (execute-query type use-sdb? selectivity)
   (match type
@@ -75,3 +91,4 @@
 
 (random-seed 42)
 (main)
+

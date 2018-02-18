@@ -67,8 +67,8 @@ def main(arg, f_suffix):
     print "Trials: " + str(NTRIALS) + "\n"
     print "Total time: " + str(total_time) + "\n"
 
-    pd.DataFrame.from_dict(db_total).to_csv("db_" + f_suffix + ".csv")
-    pd.DataFrame.from_dict(sdb_total).to_csv("shilldb_" + f_suffix + ".csv")
+    pd.DataFrame.from_dict(db_total).to_csv("data/db_" + f_suffix + ".csv")
+    pd.DataFrame.from_dict(sdb_total).to_csv("data/shilldb_" + f_suffix + ".csv")
 
 if __name__ == '__main__':
-    main(sys.argv[1], f_suffix)
+    main(sys.argv[1], sys.argv[2])
