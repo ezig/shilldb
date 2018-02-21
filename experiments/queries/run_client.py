@@ -53,7 +53,7 @@ def main(arg, f_suffix):
         if arg == "insert":
             db, sdb = run_one_test(arg, 0)
             db_total.append(db)
-            db_total.append(db)
+            sdb_total.append(sdb)
         else:
             for s in range(MIN_SELECT, MAX_SELECT + INCR, INCR):
                 db, sdb = run_one_test(arg, s)
