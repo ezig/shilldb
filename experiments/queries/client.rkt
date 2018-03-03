@@ -91,7 +91,8 @@
     ['update (execute-update-all-pass use-sdb? selectivity)]
     ['insert (execute-insert use-sdb?)]
     ['delete (execute-delete use-sdb? selectivity)]
-    ['updatefail (execute-update-fail use-sdb? selectivity)]))
+    ['updatefail (execute-update-fail use-sdb? selectivity)]
+    [else (error "invalid query workload type")]))
 
 (define (main)
   (command-line
