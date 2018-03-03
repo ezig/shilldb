@@ -41,15 +41,26 @@
           (with-db (query-rows db "select * from test where value >= $1 and value <= $2" low high)))
       void)))
 
-(define (execute-update use-sdb? select)
+(define (execute-update-all-pass use-sdb? select)
   (let-values ([(low high) (random-range select)])
     (begin
       (if use-sdb?
           (update
-           (where (open-view DBPATH "test") (format "value >= ~a and value <= ~a" low (+ high 10)))
-           "value = value + 10"
+           (where (open-view DBPATH "test") (format "value >= ~a and value <= ~a" low (+ high select)))
+           (format "value = value + ~a" (/ select 2))
            (format "value >= ~a and value <= ~a" low high))
-          (with-db (query-exec db "update test set value = value + 10 where value >= $1 and value <= $2" low high)))
+          (with-db (query-exec db "update test set value = value + $1 where value >= $2 and value <= $3" (/ select 2) low high)))
+      void)))
+
+(define (execute-update-fail use-sdb? select)
+  (let-values ([(low high) (random-range select)])
+    (begin
+      (if use-sdb?
+          (update
+           (where (open-view DBPATH "test") (format "value >= ~a and value <= ~a" low high))
+           (format "value = value + ~a" (/ select 2))
+           (format "value >= ~a and value <= ~a" low high))
+          (with-db (query-exec db "update test set value = value + $1 where value >= $2 and value <= $3" (/ select 2) low high)))
       void)))
 
 (define (execute-insert use-sdb?)
@@ -76,10 +87,11 @@
 
 (define (execute-query type use-sdb? selectivity)
   (match type
-    [where (execute-where use-sdb? selectivity)]
-    [update (execute-update use-sdb? selectivity)]
-    [insert (execute-insert use-sdb?)]
-    [delete (execute-delete use-sdb? selectivity)]))
+    ['where (execute-where use-sdb? selectivity)]
+    ['update (execute-update-all-pass use-sdb? selectivity)]
+    ['insert (execute-insert use-sdb?)]
+    ['delete (execute-delete use-sdb? selectivity)]
+    ['updatefail (execute-update-fail use-sdb? selectivity)]))
 
 (define (main)
   (command-line
