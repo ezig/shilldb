@@ -3,11 +3,13 @@ import os
 import subprocess
 import time
 import library_client
+import sys
+import pandas as pd
 
 N_ACTIONS = 125
 N_TRIALS = 50
 
-def run_one_test(old_type, new_type):
+def run_one_test(old_type, new_type, workload):
     shutil.copy("backup.db", "test.db")
     os.system('sqlite3 test.db "vacuum"')
 
@@ -30,34 +32,33 @@ def run_one_test(old_type, new_type):
 
     try:
         start = time.time()
-        library_client.run_tests(N_ACTIONS)
+        library_client.run_tests(N_ACTIONS, workload)
         end = time.time()
         return (end - start)
     finally:
         server_p.kill()
 
 
-def main():
-    db_total = 0
-    sdb_total = 0
-    sdb_ctc_total = 0
+def main(workload, fsuffix):
+    db_total = []
+    sdb_total = []
+    sdb_ctc_total = []
+
+    start = time.time()
 
     for i in range(N_TRIALS):
-        db_total += run_one_test("sdb-ctc", "db")
-        sdb_total += run_one_test("db", "sdb")
-        sdb_ctc_total += run_one_test("sdb", "sdb-ctc")
+        db_total.append(run_one_test("sdb-ctc", "db", workload))
+        sdb_total.append(run_one_test("db", "sdb", workload))
+        sdb_ctc_total.append(run_one_test("sdb", "sdb-ctc", workload))
 
-    print "\n\n"
+    end = time.time()
+    total_time = end - start
 
-    print db_total
-    print sdb_total
-    print sdb_ctc_total
+    print "Total time: " + str(total_time) + "\n"
 
-    print "\n\n"
-
-    print db_total / N_TRIALS
-    print sdb_total / N_TRIALS
-    print sdb_ctc_total / N_TRIALS
+    pd.DataFrame(db_total).to_csv("data/db_%s.csv" % fsuffix)
+    pd.DataFrame(sdb_total).to_csv("data/shilldb_%s.csv" % fsuffix)
+    pd.DataFrame(sdb_ctc_total).to_csv("data/shilldbctc%s.csv" % fsuffix)
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1], sys.argv[2])
