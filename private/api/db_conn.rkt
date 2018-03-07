@@ -21,7 +21,7 @@
   [remove-trigger dbconn trig-name conn]
   [parse-type dbconn type-string])
 
-(define install? #f)
+(define install? #t)
 
 (define (connect-and-exec-with-trigger cinfo v trig-type fun)
   (if install?
