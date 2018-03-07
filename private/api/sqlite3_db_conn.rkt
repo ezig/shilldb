@@ -23,12 +23,9 @@
      (query-string view))
    (define (start-trigger-transact dbconn)
      (let ([connection (sqlite3-connect #:database (sqlite3-db-conn-filename dbconn))])
-       (begin
-         (query-exec connection "BEGIN EXCLUSIVE")
-         connection)))
+         connection))
 
    (define (end-trigger-transact dbconn conn)
-     (query-exec conn "END TRANSACTION")
      (disconnect conn))
  
    (define/contract
@@ -76,12 +73,13 @@
            [(insert) "INSERT"])])
     (format
       (string-join
-        '("CREATE TRIGGER ~a"
+        '("CREATE TEMP TRIGGER ~a"
           "BEFORE ~a"
           "ON ~a"
           "BEGIN"
           "SELECT"
           "CASE"
+          "END;"
           "WHEN NOT (~a) THEN"
           "RAISE (ABORT, '~a violated view constraints')"
           "END;"
