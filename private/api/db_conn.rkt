@@ -21,15 +21,19 @@
   [remove-trigger dbconn trig-name conn]
   [parse-type dbconn type-string])
 
+(define install? #f)
+
 (define (connect-and-exec-with-trigger cinfo v trig-type fun)
-  (let* ([connection (start-trigger-transact cinfo)]
-         [tname (install-view-trigger cinfo v trig-type connection)]
-         [res (with-handlers ([exn:fail:sql? (lambda (e) e)])
-                (fun connection))])
-    (begin
-      (remove-trigger cinfo tname connection)
-      (end-trigger-transact cinfo connection)
-      (if (exn:fail:sql? res)
-          (error trig-type "failed due to view constraint violation: ~a"
-                 (ast-to-string (view-where-q v)))
-          res))))
+  (if install?
+      (let* ([connection (start-trigger-transact cinfo)]
+             [tname (install-view-trigger cinfo v trig-type connection)]
+             [res (with-handlers ([exn:fail:sql? (lambda (e) e)])
+                    (fun connection))])
+        (begin
+          (remove-trigger cinfo tname connection)
+          (end-trigger-transact cinfo connection)
+          (if (exn:fail:sql? res)
+              (error trig-type "failed due to view constraint violation: ~a"
+                     (ast-to-string (view-where-q v)))
+              res)))
+      (connect-and-exec cinfo fun)))
