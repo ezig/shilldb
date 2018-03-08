@@ -79,7 +79,6 @@
           "BEGIN"
           "SELECT"
           "CASE"
-          "END;"
           "WHEN NOT (~a) THEN"
           "RAISE (ABORT, '~a violated view constraints')"
           "END;"
