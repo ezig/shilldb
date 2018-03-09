@@ -8,7 +8,7 @@ import re
 import pandas as pd
 
 N_ACTIONS = 125
-N_TRIALS = 1
+N_TRIALS = 50
 
 def run_one_test(new_type, workload):
     shutil.copy("backup.db", "test.db")
@@ -75,7 +75,7 @@ def main(workload, fsuffix):
     end = time.time()
     total_time = end - start
 
-    print "Total time: " + str(total_time) + "\n"
+    print("Total time: " + str(total_time) + "\n")
 
     pd.DataFrame(db_total).to_csv("data/db_%s.csv" % fsuffix)
     pd.DataFrame(sdb_no_trigger_total).to_csv("data/shilldb_no_trigger_%s.csv" % fsuffix)

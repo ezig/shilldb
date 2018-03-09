@@ -86,7 +86,7 @@ def run_tests(n, workload):
     elif workload == "write":
         run_write(n)
     else:
-        print "Unrecognized workload"
+        print("Unrecognized workload")
         exit(1)
 
 if __name__ == '__main__':

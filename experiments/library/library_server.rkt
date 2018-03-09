@@ -13,7 +13,7 @@
 (require (for-syntax racket/syntax))
 
 (define DBPATH "/Users/ezra/Dropbox/Shill/db_api/experiments/library/test.db")
-(define DBIMPL 'sdb)
+(define DBIMPL 'sdb-ctc)
 
 (define-syntax (with-db stx)
   (syntax-case stx ()
