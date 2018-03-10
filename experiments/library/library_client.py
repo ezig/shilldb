@@ -63,12 +63,9 @@ def run_read(n):
         lookup_book(lookup_author())
         lookup_book(lookup_author())
 
-def run_write(n):
-    for i in range(1, n):
+def run_insert(n):
+    for i in range(1, 16 * n):
         reserve_random_book()
-        reserve_random_book()
-        reserve_random_book()
-        delete_one_reservation()
 
 def run_tests(n, workload):
     global authors
@@ -83,8 +80,8 @@ def run_tests(n, workload):
         run_mixed(n)
     elif workload == "read":
         run_read(n)
-    elif workload == "write":
-        run_write(n)
+    elif workload == "insert":
+        run_insert(n)
     else:
         print("Unrecognized workload")
         exit(1)

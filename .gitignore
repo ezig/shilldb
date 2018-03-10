@@ -1,3 +1,5 @@
 .#*
 *.db
 compiled/
+.ipynb_checkpoints/
+
