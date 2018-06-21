@@ -8,7 +8,7 @@ import re
 import pandas as pd
 
 N_ACTIONS = 125
-N_TRIALS = 50
+N_TRIALS = 1
 
 def run_one_test(new_type, workload):
     shutil.copy("backup.db", "test.db")
@@ -29,7 +29,7 @@ def run_one_test(new_type, workload):
 
     os.system("raco make library_server.rkt")
 
-    server_p = subprocess.Popen("racket library_server.rkt", shell=True)
+    server_p = subprocess.Popen("raco profile library_server.rkt >> output.txt", shell=True)
     # Give the server time to startup
     time.sleep(5)
 
@@ -65,11 +65,11 @@ def main(workload, fsuffix):
     start = time.time()
 
     for i in range(N_TRIALS):
-        db_total.append(run_one_test("db", workload))
-        set_triggers(False)
-        sdb_no_trigger_total.append(run_one_test("sdb", workload))
-        set_triggers(True)
-        sdb_total.append(run_one_test("sdb", workload))
+        # db_total.append(run_one_test("db", workload))
+        # set_triggers(False)
+        # sdb_no_trigger_total.append(run_one_test("sdb", workload))
+        # set_triggers(True)
+        # sdb_total.append(run_one_test("sdb", workload))
         sdb_ctc_total.append(run_one_test("sdb-ctc", workload))
 
     end = time.time()
@@ -77,10 +77,10 @@ def main(workload, fsuffix):
 
     print("Total time: " + str(total_time) + "\n")
 
-    pd.DataFrame(db_total).to_csv("data/db_%s.csv" % fsuffix)
-    pd.DataFrame(sdb_no_trigger_total).to_csv("data/shilldb_no_trigger_%s.csv" % fsuffix)
-    pd.DataFrame(sdb_total).to_csv("data/shilldb_%s.csv" % fsuffix)
-    pd.DataFrame(sdb_ctc_total).to_csv("data/shilldbctc_%s.csv" % fsuffix)
+    # pd.DataFrame(db_total).to_csv("data/db_%s.csv" % fsuffix)
+    # pd.DataFrame(sdb_no_trigger_total).to_csv("data/shilldb_no_trigger_%s.csv" % fsuffix)
+    # pd.DataFrame(sdb_total).to_csv("data/shilldb_%s.csv" % fsuffix)
+    # pd.DataFrame(sdb_ctc_total).to_csv("data/shilldbctc_%s.csv" % fsuffix)
 
 if __name__ == '__main__':
     main(sys.argv[1], sys.argv[2])
