@@ -31,10 +31,10 @@
                         seen]
                        [(equal? mod-info '#(shilldb/cap/lang/language-info get-language-info #f))
                         (cons src-mod-path seen)]
-                       [else (cons src-mod-path seen)]))) ;(error 
-                              ;'non-shilldb-module-required 
-                              ;"~a not a shilldb/cap module"
-                              ;src-mod-path)]))) 
+                       [else (error
+                              'non-shilldb-module-required
+                              "~a not a shilldb/cap module"
+                              src-mod-path)])))
              imports)
            sources))]))))
 
